@@ -1,0 +1,95 @@
+# Fiduciaire AI — config par cabinet
+# Copier en config.yaml et adapter. Chargé au démarrage du worker.
+
+cabinet:
+  name: "Cabinet Demo"
+  slug: "demo"
+  langues_ocr: ["fra", "deu"]   # codes Tesseract
+
+paths:
+  inbox: "./data/inbox"
+  needs_review: "./data/needs-review"
+  archive: "./data/archive"
+  clients_root: "./data/clients"
+  db: "./data/fiduciaire.sqlite"
+
+llm:
+  provider: "ollama"
+  endpoint: "http://localhost:11434"
+  # env: "dev" (MBP 16 GB) ou "prod" (Mac Mini 64 GB)
+  env: "dev"
+  models:
+    dev:
+      # Bench Lundi 2026-04-27 (cf DECISIONS.md) : 7B + prompt v2 few-shot
+      # validé (3/3 client matching, médiane 12.66 s/doc). 14B gardé en
+      # fallback A/B sur le bench Jeudi 50 docs.
+      primary: "qwen2.5:7b-instruct-q4_K_M"
+      fallback: "qwen2.5:14b-instruct-q4_K_M"
+      vision: "qwen2.5vl:7b-q4_K_M"
+    prod:
+      primary: "llama3.3:70b-instruct-q4_K_M"
+      fallback: "qwen2.5:32b-instruct-q4_K_M"
+      vision: "qwen2.5vl:7b-q4_K_M"
+  prompt_file: "worker/prompts/classify_v2_fewshot.txt"
+  timeout_s: 60
+  temperature: 0.0
+  num_predict: 512
+
+# Pré-parsing avant OCR/LLM (évite l'IA quand l'info est déjà structurée).
+preparser:
+  swiss_qr_bill:
+    enabled: true
+    # Si QR détecté et parsé : champs montant/devise/fournisseur/client = confidence 1.0
+    # Le LLM est appelé uniquement pour le champ "type".
+
+# OCR fallback vision si extraction Tesseract trop pauvre.
+ocr_fallback:
+  vision_when_text_ratio_below: 0.70  # heuristique len(text) / page surface * dpi
+
+ocr:
+  engine: "tesseract"
+  dpi: 300
+  preprocess:
+    deskew: true
+    binarize: true
+
+# Seuils de confiance. Si un champ est sous son seuil, le doc va en review.
+confidence_thresholds:
+  type: 0.85
+  client: 0.80
+  date: 0.75
+  montant: 0.75
+
+# Convention de nommage du fichier final.
+# Variables disponibles : {date_iso}, {type_short}, {client_slug},
+# {montant_chf}, {fournisseur_slug}, {hash6}
+naming:
+  pattern: "{date_iso}_{type_short}_{fournisseur_slug}_{montant_chf}_{hash6}.pdf"
+  date_format: "YYYY-MM-DD"
+  type_short_map:
+    facture_fournisseur: "FF"
+    note_frais: "NF"
+    releve_bancaire: "RB"
+    document_fiscal: "FI"
+    courrier: "CO"
+    autre: "XX"
+
+# Arborescence de classement.
+# Variables : {client_slug}, {annee}, {type_long}
+routing:
+  client_dir_pattern: "{client_slug}/{annee}/{type_long}"
+
+# Liste blanche des clients connus (mapping nom détecté → slug normalisé).
+# Si client détecté n'est pas dans la liste → review manuel obligatoire.
+clients:
+  - name: "Restaurant Le Rivage SA"
+    aliases: ["Le Rivage", "Rivage SA", "Restaurant Rivage"]
+    slug: "le-rivage"
+  - name: "Atelier Boillat"
+    aliases: ["Boillat", "Atelier H. Boillat"]
+    slug: "atelier-boillat"
+
+# Logs
+logging:
+  level: "INFO"
+  file: "./data/worker.log"

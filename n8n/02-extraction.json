@@ -1,0 +1,214 @@
+{
+  "name": "Fiduciaire — 02 Extraction & Écriture",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fiduciaire-extraction",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook (document_triaged)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "category-extractable",
+              "leftValue": "={{ $json.body.category }}",
+              "rightValue": "spam",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "skip-spam",
+      "name": "Skip spam",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 320]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_documents",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Webhook (document_triaged)').item.json.body.document_id }}" }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "fetch-doc",
+      "name": "Supabase — fetch document",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [640, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_clients",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $json.client_id }}" }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "fetch-cabinet",
+      "name": "Supabase — fetch cabinet",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [860, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{$env.ANTHROPIC_API_KEY}}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"Tu es un comptable suisse expert. Tu extrais les données d'une facture/note de frais et tu suggères l'écriture comptable au format PME suisse. Tu réponds UNIQUEMENT en JSON strict.\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"DOCUMENT:\\nSujet: {{ $('Supabase — fetch document').item.json.subject }}\\nCatégorie: {{ $('Supabase — fetch document').item.json.category }}\\nExpéditeur: {{ $('Supabase — fetch document').item.json.source_email }}\\nContenu: {{ $('Supabase — fetch document').item.json.body_preview }}\\n\\nPLAN COMPTABLE DISPONIBLE:\\n{{ JSON.stringify($json.plan_comptes) }}\\n\\nExtrais les données et suggère l'écriture. JSON uniquement :\\n{\\n  \\\"extracted_data\\\": {\\n    \\\"montant\\\": number,\\n    \\\"date\\\": \\\"YYYY-MM-DD\\\",\\n    \\\"fournisseur\\\": \\\"string | null\\\",\\n    \\\"client\\\": \\\"string | null\\\",\\n    \\\"numero_facture\\\": \\\"string\\\",\\n    \\\"tva\\\": number,\\n    \\\"description\\\": \\\"string\\\"\\n  },\\n  \\\"suggested_entry\\\": {\\n    \\\"compte_debit\\\": \\\"code à 4 chiffres du plan ci-dessus\\\",\\n    \\\"compte_credit\\\": \\\"code à 4 chiffres du plan ci-dessus\\\",\\n    \\\"montant\\\": number,\\n    \\\"libelle\\\": \\\"max 80 chars\\\"\\n  },\\n  \\\"confidence\\\": 0.0-1.0\\n}\"\n  }]\n}"
+      },
+      "id": "claude-extract",
+      "name": "Claude — Extraction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json?.content?.[0]?.text || '{}';\nconst cleaned = raw.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/i, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(cleaned); }\ncatch (e) { parsed = { extracted_data: {}, suggested_entry: {}, confidence: 0 }; }\nreturn [{ json: parsed }];"
+      },
+      "id": "parse-extract",
+      "name": "Parse IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 240]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_extractions",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "document_id", "fieldValue": "={{ $('Webhook (document_triaged)').item.json.body.document_id }}" },
+            { "fieldId": "client_id", "fieldValue": "={{ $('Webhook (document_triaged)').item.json.body.client_id }}" },
+            { "fieldId": "extracted_data", "fieldValue": "={{ JSON.stringify($json.extracted_data) }}" },
+            { "fieldId": "suggested_entry", "fieldValue": "={{ JSON.stringify($json.suggested_entry) }}" },
+            { "fieldId": "ai_confidence", "fieldValue": "={{ $json.confidence }}" },
+            { "fieldId": "status", "fieldValue": "en_attente" }
+          ]
+        }
+      },
+      "id": "supabase-insert-ext",
+      "name": "Supabase — insert ai_extractions",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1520, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "ai_documents",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Webhook (document_triaged)').item.json.body.document_id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "status", "fieldValue": "traite" }
+          ]
+        }
+      },
+      "id": "supabase-update-doc",
+      "name": "Supabase — doc = traite",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1740, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_actions",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "client_id", "fieldValue": "={{ $('Webhook (document_triaged)').item.json.body.client_id }}" },
+            { "fieldId": "action_type", "fieldValue": "extraction" },
+            { "fieldId": "description", "fieldValue": "=Extraction: {{ $('Parse IA').item.json.extracted_data.fournisseur || $('Parse IA').item.json.extracted_data.client || 'document' }} — CHF {{ $('Parse IA').item.json.extracted_data.montant }}" },
+            { "fieldId": "confidence", "fieldValue": "={{ $('Parse IA').item.json.confidence }}" },
+            { "fieldId": "status", "fieldValue": "auto" },
+            { "fieldId": "related_document_id", "fieldValue": "={{ $('Webhook (document_triaged)').item.json.body.document_id }}" }
+          ]
+        }
+      },
+      "id": "supabase-log-action",
+      "name": "Supabase — log ai_actions",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1960, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook (document_triaged)": { "main": [[{ "node": "Skip spam", "type": "main", "index": 0 }]] },
+    "Skip spam": {
+      "main": [
+        [{ "node": "Supabase — fetch document", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Supabase — fetch document": { "main": [[{ "node": "Supabase — fetch cabinet", "type": "main", "index": 0 }]] },
+    "Supabase — fetch cabinet": { "main": [[{ "node": "Claude — Extraction", "type": "main", "index": 0 }]] },
+    "Claude — Extraction": { "main": [[{ "node": "Parse IA", "type": "main", "index": 0 }]] },
+    "Parse IA": { "main": [[{ "node": "Supabase — insert ai_extractions", "type": "main", "index": 0 }]] },
+    "Supabase — insert ai_extractions": { "main": [[{ "node": "Supabase — doc = traite", "type": "main", "index": 0 }]] },
+    "Supabase — doc = traite": { "main": [[{ "node": "Supabase — log ai_actions", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Extraction des données et suggestion d'écriture comptable. Déclenché par webhook après le triage. Utilise claude-sonnet-4-6 avec le plan comptable du cabinet en contexte.",
+    "model": "claude-sonnet-4-6"
+  }
+}

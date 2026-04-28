@@ -1,0 +1,3 @@
+filename,type,client,date,montant_chf,fournisseur,devise,notes
+# Exemple. Remplir Lundi avec 20 docs réels anonymisés.
+# 2024-03-12_facture_swisscom_le-rivage.pdf,facture_fournisseur,Restaurant Le Rivage SA,2024-03-12,189.50,Swisscom (Suisse) SA,CHF,

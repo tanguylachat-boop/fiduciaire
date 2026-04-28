@@ -1,0 +1,237 @@
+{
+  "name": "Fiduciaire — 03 Relances factures",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }] }
+      },
+      "id": "cron-trigger",
+      "name": "Cron 08:00 quotidien",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_invoices",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "status", "condition": "in", "keyValue": "en_attente,relancee_1,relancee_2" },
+            { "keyName": "due_date", "condition": "lt", "keyValue": "={{ new Date().toISOString().slice(0,10) }}" }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "fetch-overdue",
+      "name": "Supabase — factures échues",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [420, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-per-invoice",
+      "name": "Pour chaque facture",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [640, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inv = $json;\nconst nextStatus = ({\n  en_attente: 'relancee_1',\n  relancee_1: 'relancee_2',\n  relancee_2: 'relancee_3',\n  relancee_3: 'contentieux'\n})[inv.status];\nconst ton = ({\n  en_attente: 'courtois et informatif (premier rappel)',\n  relancee_1: 'ferme mais respectueux (deuxième rappel)',\n  relancee_2: 'très ferme, mention du contentieux (troisième rappel)',\n  relancee_3: 'mise en demeure formelle'\n})[inv.status];\nconst daysLate = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);\nreturn [{ json: { ...inv, nextStatus, ton, daysLate } }];"
+      },
+      "id": "prepare-context",
+      "name": "Préparer contexte relance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{$env.ANTHROPIC_API_KEY}}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 600,\n  \"system\": \"Tu rédiges des emails de relance pour un cabinet fiduciaire suisse. Ton français romand, formel, direct. Réponds UNIQUEMENT en JSON strict.\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Rédige un email de relance pour la facture suivante.\\n\\nCLIENT: {{ $json.client_name }}\\nN° FACTURE: {{ $json.invoice_number }}\\nMONTANT: CHF {{ $json.amount }}\\nÉCHÉANCE: {{ $json.due_date }}\\nJOURS DE RETARD: {{ $json.daysLate }}\\nSTATUT ACTUEL: {{ $json.status }} → PROCHAIN: {{ $json.nextStatus }}\\nTON REQUIS: {{ $json.ton }}\\n\\nRéponds en JSON :\\n{\\n  \\\"subject\\\": \\\"string\\\",\\n  \\\"body\\\": \\\"string (signé 'Fiduciaire Morand & Associés')\\\",\\n  \\\"confidence\\\": 0.0-1.0\\n}\"\n  }]\n}"
+      },
+      "id": "claude-draft",
+      "name": "Claude — Rédaction relance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json?.content?.[0]?.text || '{}';\nconst cleaned = raw.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/i, '').trim();\nlet email;\ntry { email = JSON.parse(cleaned); }\ncatch (e) { email = { subject: 'Rappel facture', body: '', confidence: 0 }; }\nreturn [{ json: email }];"
+      },
+      "id": "parse-email",
+      "name": "Parse email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "high-confidence",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 0.95,
+              "operator": { "type": "number", "operation": "gte" }
+            },
+            {
+              "id": "not-contentieux",
+              "leftValue": "={{ $('Préparer contexte relance').item.json.nextStatus }}",
+              "rightValue": "contentieux",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "auto-or-manual",
+      "name": "Auto ≥95% (sinon manuel)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1520, 320]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.CABINET_FROM_EMAIL}}",
+        "toEmail": "={{ $('Préparer contexte relance').item.json.client_email }}",
+        "subject": "={{ $('Parse email').item.json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Parse email').item.json.body }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Envoyer email (SMTP)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1740, 220],
+      "credentials": {
+        "smtp": { "id": "CRED_SMTP_FIDUCIAIRE", "name": "SMTP Cabinet" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "ai_invoices",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Préparer contexte relance').item.json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "status", "fieldValue": "={{ $('Préparer contexte relance').item.json.nextStatus }}" },
+            { "fieldId": "last_reminder_at", "fieldValue": "={{ new Date().toISOString() }}" }
+          ]
+        }
+      },
+      "id": "supabase-update-invoice",
+      "name": "Supabase — MAJ statut",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1960, 220],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "ai_invoices",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Préparer contexte relance').item.json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "next_reminder_preview", "fieldValue": "=Objet: {{ $('Parse email').item.json.subject }}\n\n{{ $('Parse email').item.json.body }}" }
+          ]
+        }
+      },
+      "id": "supabase-store-draft",
+      "name": "Supabase — stocker draft",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1740, 420],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_actions",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "client_id", "fieldValue": "={{ $('Préparer contexte relance').item.json.client_id }}" },
+            { "fieldId": "action_type", "fieldValue": "relance" },
+            { "fieldId": "description", "fieldValue": "=Relance envoyée à {{ $('Préparer contexte relance').item.json.client_name }} (facture {{ $('Préparer contexte relance').item.json.invoice_number }})" },
+            { "fieldId": "confidence", "fieldValue": "={{ $('Parse email').item.json.confidence }}" },
+            { "fieldId": "status", "fieldValue": "auto" },
+            { "fieldId": "related_invoice_id", "fieldValue": "={{ $('Préparer contexte relance').item.json.id }}" }
+          ]
+        }
+      },
+      "id": "log-auto",
+      "name": "Log action (auto)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [2180, 220],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 08:00 quotidien": { "main": [[{ "node": "Supabase — factures échues", "type": "main", "index": 0 }]] },
+    "Supabase — factures échues": { "main": [[{ "node": "Pour chaque facture", "type": "main", "index": 0 }]] },
+    "Pour chaque facture": { "main": [[{ "node": "Préparer contexte relance", "type": "main", "index": 0 }]] },
+    "Préparer contexte relance": { "main": [[{ "node": "Claude — Rédaction relance", "type": "main", "index": 0 }]] },
+    "Claude — Rédaction relance": { "main": [[{ "node": "Parse email", "type": "main", "index": 0 }]] },
+    "Parse email": { "main": [[{ "node": "Auto ≥95% (sinon manuel)", "type": "main", "index": 0 }]] },
+    "Auto ≥95% (sinon manuel)": {
+      "main": [
+        [{ "node": "Envoyer email (SMTP)", "type": "main", "index": 0 }],
+        [{ "node": "Supabase — stocker draft", "type": "main", "index": 0 }]
+      ]
+    },
+    "Envoyer email (SMTP)": { "main": [[{ "node": "Supabase — MAJ statut", "type": "main", "index": 0 }]] },
+    "Supabase — MAJ statut": { "main": [[{ "node": "Log action (auto)", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Cron quotidien 08:00. Repère les factures échues, génère une relance via claude-sonnet-4-6. Envoi auto si confiance ≥ 95%, sinon stocke le draft pour validation fiduciaire. Passage en contentieux jamais automatique.",
+    "model": "claude-sonnet-4-6"
+  }
+}

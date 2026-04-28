@@ -1,0 +1,156 @@
+{
+  "name": "Fiduciaire — 01 Email Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "protocol": "imap",
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "forceReconnect": 60
+        }
+      },
+      "id": "imap-trigger",
+      "name": "IMAP Email Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [240, 320],
+      "credentials": {
+        "imap": { "id": "CRED_IMAP_FIDUCIAIRE", "name": "IMAP docs@morand.lxstudio.ch" }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "client_id", "name": "client_id", "value": "=00000000-0000-0000-0000-000000000001", "type": "string" },
+            { "id": "source_email", "name": "source_email", "value": "={{ $json.from?.value?.[0]?.address || $json.from }}", "type": "string" },
+            { "id": "subject", "name": "subject", "value": "={{ $json.subject }}", "type": "string" },
+            { "id": "body_text", "name": "body_text", "value": "={{ ($json.text || '').slice(0, 4000) }}", "type": "string" },
+            { "id": "attachments", "name": "attachments", "value": "={{ Object.keys($binary || {}).map(k => ({ filename: $binary[k].fileName, type: $binary[k].mimeType, size: $binary[k].fileSize })) }}", "type": "array" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize",
+      "name": "Normaliser payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{$env.ANTHROPIC_API_KEY}}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"Tu es un assistant pour fiduciaire suisse. Tu catégorises les emails reçus et en extrais un niveau d'urgence. Tu réponds UNIQUEMENT en JSON strict.\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Catégorise cet email reçu par un fiduciaire.\\n\\nSUJET: {{ $json.subject }}\\nEXPÉDITEUR: {{ $json.source_email }}\\nCORPS:\\n{{ $json.body_text }}\\n\\nPIÈCES JOINTES: {{ $json.attachments.map(a => a.filename).join(', ') || 'aucune' }}\\n\\nRéponds en JSON uniquement :\\n{\\n  \\\"category\\\": \\\"facture_fournisseur|note_frais|releve_bancaire|document_fiscal|courrier|spam\\\",\\n  \\\"urgency\\\": \\\"haute|normale|basse\\\",\\n  \\\"confidence\\\": 0.0-1.0,\\n  \\\"reasoning\\\": \\\"une phrase courte en français\\\"\\n}\"\n  }]\n}",
+        "options": { "response": { "response": { "fullResponse": false } } }
+      },
+      "id": "claude-triage",
+      "name": "Claude — Triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json?.content?.[0]?.text || '{}';\nconst cleaned = raw.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/i, '').trim();\nlet parsed;\ntry { parsed = JSON.parse(cleaned); }\ncatch (e) { parsed = { category: 'courrier', urgency: 'normale', confidence: 0.3, reasoning: 'parse-error' }; }\nreturn [{ json: parsed }];"
+      },
+      "id": "parse-triage",
+      "name": "Parse IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 320]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_documents",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "client_id", "fieldValue": "={{ $('Normaliser payload').item.json.client_id }}" },
+            { "fieldId": "source_email", "fieldValue": "={{ $('Normaliser payload').item.json.source_email }}" },
+            { "fieldId": "subject", "fieldValue": "={{ $('Normaliser payload').item.json.subject }}" },
+            { "fieldId": "body_preview", "fieldValue": "={{ $('Normaliser payload').item.json.body_text.slice(0, 300) }}" },
+            { "fieldId": "category", "fieldValue": "={{ $json.category }}" },
+            { "fieldId": "urgency", "fieldValue": "={{ $json.urgency }}" },
+            { "fieldId": "attachments", "fieldValue": "={{ JSON.stringify($('Normaliser payload').item.json.attachments) }}" },
+            { "fieldId": "ai_confidence", "fieldValue": "={{ $json.confidence }}" },
+            { "fieldId": "status", "fieldValue": "nouveau" }
+          ]
+        }
+      },
+      "id": "supabase-insert-doc",
+      "name": "Supabase — insert ai_documents",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1160, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_actions",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "client_id", "fieldValue": "={{ $('Normaliser payload').item.json.client_id }}" },
+            { "fieldId": "action_type", "fieldValue": "triage" },
+            { "fieldId": "description", "fieldValue": "=Email \"{{ $('Normaliser payload').item.json.subject }}\" catégorisé: {{ $('Parse IA').item.json.category }} (urgence {{ $('Parse IA').item.json.urgency }})" },
+            { "fieldId": "confidence", "fieldValue": "={{ $('Parse IA').item.json.confidence }}" },
+            { "fieldId": "status", "fieldValue": "auto" },
+            { "fieldId": "related_document_id", "fieldValue": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "id": "supabase-insert-action",
+      "name": "Supabase — log ai_actions",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1400, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.DASHBOARD_WEBHOOK_URL}}/api/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event\": \"document_triaged\",\n  \"client_id\": \"{{ $('Normaliser payload').item.json.client_id }}\",\n  \"document_id\": \"{{ $('Supabase — insert ai_documents').item.json.id }}\",\n  \"category\": \"{{ $('Parse IA').item.json.category }}\",\n  \"urgency\": \"{{ $('Parse IA').item.json.urgency }}\"\n}"
+      },
+      "id": "notify-dashboard",
+      "name": "Webhook dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 320]
+    }
+  ],
+  "connections": {
+    "IMAP Email Trigger": { "main": [[{ "node": "Normaliser payload", "type": "main", "index": 0 }]] },
+    "Normaliser payload": { "main": [[{ "node": "Claude — Triage", "type": "main", "index": 0 }]] },
+    "Claude — Triage": { "main": [[{ "node": "Parse IA", "type": "main", "index": 0 }]] },
+    "Parse IA": { "main": [[{ "node": "Supabase — insert ai_documents", "type": "main", "index": 0 }]] },
+    "Supabase — insert ai_documents": { "main": [[{ "node": "Supabase — log ai_actions", "type": "main", "index": 0 }]] },
+    "Supabase — log ai_actions": { "main": [[{ "node": "Webhook dashboard", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Triage automatique des emails reçus sur docs@{cabinet}.lxstudio.ch. Utilise claude-sonnet-4-6 pour catégoriser et déterminer l'urgence. PAS de filter node entre IMAP et downstream (casse les binaires).",
+    "model": "claude-sonnet-4-6"
+  }
+}

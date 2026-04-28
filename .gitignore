@@ -1,0 +1,48 @@
+# Node / Next.js (dashboard existant + futur)
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+coverage/
+next-env.d.ts
+
+# Env
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+*.log
+
+# Vercel
+.vercel
+
+# Python worker
+worker/.venv/
+worker/**/__pycache__/
+worker/**/*.pyc
+worker/.pytest_cache/
+worker/.ruff_cache/
+worker/*.egg-info/
+
+# Données POC (jamais en git — confidentiel cabinet)
+data/inbox/*
+data/needs-review/*
+data/archive/*
+data/clients/*
+data/samples/*
+data/*.sqlite
+data/*.sqlite-*
+data/worker.log
+!data/inbox/.gitkeep
+!data/needs-review/.gitkeep
+!data/archive/.gitkeep
+!data/clients/.gitkeep
+!data/samples/.gitkeep
+!data/samples/labels.csv
+
+# Config locale (par cabinet)
+config.yaml

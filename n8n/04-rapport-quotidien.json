@@ -1,0 +1,243 @@
+{
+  "name": "Fiduciaire — 04 Rapport quotidien",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "id": "cron-trigger",
+      "name": "Cron 07:00 quotidien",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 320]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_clients",
+        "returnAll": true
+      },
+      "id": "fetch-cabinets",
+      "name": "Supabase — cabinets actifs",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [420, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "split-cabinets",
+      "name": "Pour chaque cabinet",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [640, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const client_id = $json.id;\nconst since = new Date(Date.now() - 24*3600*1000).toISOString();\nreturn [{ json: { client_id, since, cabinet: $json } }];"
+      },
+      "id": "prepare-window",
+      "name": "Fenêtre 24h",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_documents",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "client_id", "condition": "eq", "keyValue": "={{ $json.client_id }}" },
+            { "keyName": "created_at", "condition": "gte", "keyValue": "={{ $json.since }}" }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "fetch-docs",
+      "name": "Supabase — docs 24h",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1080, 240],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_extractions",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "client_id", "condition": "eq", "keyValue": "={{ $('Fenêtre 24h').item.json.client_id }}" },
+            { "keyName": "status", "condition": "eq", "keyValue": "en_attente" }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "fetch-pending",
+      "name": "Supabase — en attente",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1080, 400],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "ai_actions",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "client_id", "condition": "eq", "keyValue": "={{ $('Fenêtre 24h').item.json.client_id }}" },
+            { "keyName": "action_type", "condition": "eq", "keyValue": "relance" },
+            { "keyName": "created_at", "condition": "gte", "keyValue": "={{ $('Fenêtre 24h').item.json.since }}" }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "fetch-reminders",
+      "name": "Supabase — relances 24h",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [1300, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const docs = $('Supabase — docs 24h').all().map(i => i.json);\nconst pending = $('Supabase — en attente').all().map(i => i.json);\nconst reminders = $('Supabase — relances 24h').all().map(i => i.json);\nconst window = $('Fenêtre 24h').item.json;\n\nconst anomalies = docs.filter(d => d.ai_confidence < 0.8 || d.urgency === 'haute');\n\nreturn [{\n  json: {\n    cabinet: window.cabinet,\n    stats: {\n      docs_count: docs.length,\n      docs_by_category: docs.reduce((acc, d) => { acc[d.category] = (acc[d.category]||0)+1; return acc; }, {}),\n      pending_count: pending.length,\n      reminders_count: reminders.length,\n      anomalies_count: anomalies.length\n    },\n    anomalies: anomalies.map(a => ({ subject: a.subject, urgency: a.urgency, confidence: a.ai_confidence }))\n  }\n}];"
+      },
+      "id": "aggregate",
+      "name": "Agréger stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{$env.ANTHROPIC_API_KEY}}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1200,\n  \"system\": \"Tu rédiges le rapport matinal d'un employé IA pour son fiduciaire suisse. Ton : concis, professionnel, actionnable. Format : HTML simple inline-styled pour lecture email (pas de Markdown). Français romand.\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Rédige le rapport du matin pour {{ $json.cabinet.name }}.\\n\\nSTATS 24H:\\n{{ JSON.stringify($json.stats) }}\\n\\nANOMALIES:\\n{{ JSON.stringify($json.anomalies) }}\\n\\nStructure attendue :\\n- Bonjour personnalisé\\n- Chiffres clés du jour\\n- Écritures à valider (actions concrètes)\\n- Alertes / anomalies\\n- Recommandations\\n- Signature 'Votre employé IA — LX Studio'\"\n  }]\n}"
+      },
+      "id": "claude-report",
+      "name": "Claude — Rédaction rapport",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json?.content?.[0]?.text || '<p>Rapport indisponible</p>';\nreturn [{ json: { html } }];"
+      },
+      "id": "extract-html",
+      "name": "Extraire HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 320]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.CABINET_FROM_EMAIL}}",
+        "toEmail": "={{ $('Fenêtre 24h').item.json.cabinet.email_inbox }}",
+        "subject": "=Rapport quotidien — {{ new Date().toLocaleDateString('fr-CH') }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-report",
+      "name": "Envoyer rapport email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [2180, 220],
+      "credentials": {
+        "smtp": { "id": "CRED_SMTP_FIDUCIAIRE", "name": "SMTP Cabinet" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.DASHBOARD_WEBHOOK_URL}}/api/reports/daily",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $('Fenêtre 24h').item.json.client_id }}\",\n  \"html\": {{ JSON.stringify($('Extraire HTML').item.json.html) }},\n  \"stats\": {{ JSON.stringify($('Agréger stats').item.json.stats) }}\n}"
+      },
+      "id": "push-dashboard",
+      "name": "Push dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2180, 420]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "ai_actions",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "client_id", "fieldValue": "={{ $('Fenêtre 24h').item.json.client_id }}" },
+            { "fieldId": "action_type", "fieldValue": "rapport" },
+            { "fieldId": "description", "fieldValue": "=Rapport quotidien généré — {{ $('Agréger stats').item.json.stats.docs_count }} documents, {{ $('Agréger stats').item.json.stats.pending_count }} en attente" },
+            { "fieldId": "confidence", "fieldValue": 1 },
+            { "fieldId": "status", "fieldValue": "auto" }
+          ]
+        }
+      },
+      "id": "log-report",
+      "name": "Log action rapport",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 4.2,
+      "position": [2400, 320],
+      "credentials": {
+        "supabaseApi": { "id": "CRED_SUPABASE_FIDUCIAIRE", "name": "Supabase Fiduciaire" }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 07:00 quotidien": { "main": [[{ "node": "Supabase — cabinets actifs", "type": "main", "index": 0 }]] },
+    "Supabase — cabinets actifs": { "main": [[{ "node": "Pour chaque cabinet", "type": "main", "index": 0 }]] },
+    "Pour chaque cabinet": { "main": [[{ "node": "Fenêtre 24h", "type": "main", "index": 0 }]] },
+    "Fenêtre 24h": { "main": [[{ "node": "Supabase — docs 24h", "type": "main", "index": 0 }]] },
+    "Supabase — docs 24h": { "main": [[{ "node": "Supabase — en attente", "type": "main", "index": 0 }]] },
+    "Supabase — en attente": { "main": [[{ "node": "Supabase — relances 24h", "type": "main", "index": 0 }]] },
+    "Supabase — relances 24h": { "main": [[{ "node": "Agréger stats", "type": "main", "index": 0 }]] },
+    "Agréger stats": { "main": [[{ "node": "Claude — Rédaction rapport", "type": "main", "index": 0 }]] },
+    "Claude — Rédaction rapport": { "main": [[{ "node": "Extraire HTML", "type": "main", "index": 0 }]] },
+    "Extraire HTML": {
+      "main": [[
+        { "node": "Envoyer rapport email", "type": "main", "index": 0 },
+        { "node": "Push dashboard", "type": "main", "index": 0 }
+      ]]
+    },
+    "Envoyer rapport email": { "main": [[{ "node": "Log action rapport", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Cron quotidien 07:00. Pour chaque cabinet, agrège les stats des 24 dernières heures et génère un rapport via claude-sonnet-4-6. Envoyé par email ET poussé sur le dashboard.",
+    "model": "claude-sonnet-4-6"
+  }
+}
