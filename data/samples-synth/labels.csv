@@ -1,0 +1,6 @@
+filename,type,client,date,montant_chf,fournisseur,devise,notes
+01_swisscom_qr.pdf,facture_fournisseur,Restaurant Le Rivage SA,2024-03-12,287.00,Swisscom (Suisse) SA,CHF,QR-bill
+02_sig_alias.pdf,facture_fournisseur,Restaurant Le Rivage SA,2024-04-04,446.29,Services Industriels de Geneve,CHF,alias
+03_fiscal_sarl.pdf,document_fiscal,Restaurant Le Rivage SA,2024-06-15,7850.00,Office cantonal des impots,CHF,variante Sarl
+04_migros_inconnu.pdf,note_frais,,2024-03-14,19.80,Migros,CHF,client null attendu
+05_ubs_releve.pdf,releve_bancaire,Atelier Boillat,2024-03-01,14250.00,UBS Switzerland AG,CHF,atelier-boillat
