@@ -1,3 +1,21 @@
 filename,type,client,date,montant_chf,fournisseur,devise,notes
-# Exemple. Remplir Lundi avec 20 docs réels anonymisés.
-# 2024-03-12_facture_swisscom_le-rivage.pdf,facture_fournisseur,Restaurant Le Rivage SA,2024-03-12,189.50,Swisscom (Suisse) SA,CHF,
+01_swisscom_facture_qrbill.pdf,facture_fournisseur,Restaurant Le Rivage SA,2026-04-15,145.50,,CHF,Swisscom abonnement Internet+telephone
+02_migros_facture_simple.pdf,facture_fournisseur,Cabinet Médical Dr. Martin Sàrl,2026-04-22,373.98,,CHF,Migros economat - format facture classique sans QR
+03_swisspost_rechnung_qrbill_de.pdf,facture_fournisseur,Bauunternehmung Zumstein AG,2026-04-18,231.00,,CHF,Document allemand avec QR-bill (Postfach + Adressänderungen)
+04_note_frais_restaurant.pdf,note_frais,Études Cabinet Tanguy Lachat,2026-04-12,133.50,,CHF,Note de frais restaurant - format reçu
+05_releve_bancaire_ubs.pdf,releve_bancaire,SARL Étude Comptable Genevoise,2026-04-30,8956.82,,CHF,Relevé bancaire mensuel UBS - solde final
+06_facture_freelance_qrbill.pdf,facture_fournisseur,Cabinet Médical Dr. Martin Sàrl,2026-04-25,2680.00,,CHF,Facture freelance avec QR (designer indépendant)
+07_avis_taxation_canton.pdf,document_fiscal,SARL Étude Comptable Genevoise,2026-04-10,18900.00,,CHF,Avis de taxation cantonal - administration GE
+08_sunrise_facture_qrbill.pdf,facture_fournisseur,Étude Notariale Roulet & Associés,2026-04-15,263.90,,CHF,Sunrise mobile + fixe avec QR-bill
+09_romande_energie_facture.pdf,facture_fournisseur,Architecte Pierre Müller SA,2026-04-15,650.77,,CHF,Facture électricité Romande Energie T1 sans QR
+10_helsana_facture_assurance.pdf,facture_fournisseur,Cabinet Dentaire Dr. Bernasconi,2026-04-15,7612.00,,CHF,Facture trimestrielle assurance maladie collective
+11_postfinance_releve.pdf,releve_bancaire,Boutique Mode Délice Sàrl,2026-04-30,-1846.20,,CHF,Relevé PostFinance - compte en débit
+12_decompte_tva_t1.pdf,document_fiscal,SARL Étude Comptable Genevoise,2026-04-02,11935.65,,CHF,Décompte TVA T1 2026 administration AFC
+13_quittance_cafe_simple.pdf,note_frais,inconnu,2026-04-26,17.00,,CHF,Reçu café simple sans destinataire identifié
+14_contrat_bail_commercial.pdf,contrat,Cabinet Avocat Vionnet & Partners,2026-05-01,4200.00,,CHF,Contrat de bail commercial loyer mensuel
+15_avenant_mandat_honoraires.pdf,contrat,Brasserie La Cigale Sàrl,2026-04-18,185.00,,CHF,Avenant tarif horaire mandat fiduciaire
+16_lieferant_rechnung_de.pdf,facture_fournisseur,Treuhand Berner & Co AG,2026-04-11,2080.00,,CHF,Rechnung allemande sans QR (imprimante + service)
+17_recu_photo_floue.pdf,note_frais,inconnu,2026-04-23,113.00,,CHF,CAS LIMITE - reçu photo floue (test vision fallback)
+18_coop_facture.pdf,note_frais,inconnu,2026-04-17,68.50,,CHF,Reçu Coop Pronto - achats économat type ticket
+19_avs_facture_cotisations.pdf,document_fiscal,Boulangerie La Mie Dorée Sàrl,2026-04-02,10187.26,,CHF,Facture acompte cotisations AVS T2 2026
+20_recu_manuscrit_artisan.pdf,facture_fournisseur,Cafe du Centre,2026-04-25,388.50,,CHF,CAS LIMITE - facture style manuscrit dégradé (test OCR limites)
