@@ -155,6 +155,12 @@ def classify(
         c.retries = attempt
         for f in ("type", "client", "date", "montant_chf", "fournisseur", "devise"):
             c.sources[f] = "llm"
+        # Règle métier : note de frais / quittance sans destinataire identifiable
+        # → client="inconnu" (string littéral, pas null) pour permettre routing
+        # vers un dossier "inconnu" plutôt que de bloquer en review.
+        if c.type == "note_frais" and not c.client:
+            c.client = "inconnu"
+            c.sources["client"] = "rule"
         return c
 
     c = Classification()

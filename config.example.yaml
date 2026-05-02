@@ -81,13 +81,50 @@ routing:
 
 # Liste blanche des clients connus (mapping nom détecté → slug normalisé).
 # Si client détecté n'est pas dans la liste → review manuel obligatoire.
+# 14 clients du corpus 20 docs POC (cf DECISIONS.md 2026-04-30 known_clients).
 clients:
   - name: "Restaurant Le Rivage SA"
-    aliases: ["Le Rivage", "Rivage SA", "Restaurant Rivage"]
-    slug: "le-rivage"
-  - name: "Atelier Boillat"
-    aliases: ["Boillat", "Atelier H. Boillat"]
-    slug: "atelier-boillat"
+    aliases: ["Le Rivage", "Restaurant Rivage", "Rivage SA", "Le Rivage Montreux"]
+    slug: "restaurant-le-rivage"
+  - name: "Cabinet Médical Dr. Martin Sàrl"
+    aliases: ["Dr Martin", "Dr. Martin", "Cabinet Martin", "Cabinet Médical Martin"]
+    slug: "cabinet-medical-martin"
+  - name: "Bauunternehmung Zumstein AG"
+    aliases: ["Zumstein", "Zumstein AG", "Bauunternehmung Zumstein"]
+    slug: "bauunternehmung-zumstein"
+  - name: "SARL Étude Comptable Genevoise"
+    aliases: ["Étude Comptable Genevoise", "SARL Genevoise", "Étude Genevoise"]
+    slug: "etude-comptable-genevoise"
+  - name: "Étude Notariale Roulet & Associés"
+    aliases: ["Roulet", "Étude Roulet", "Notariale Roulet", "Roulet et Associés"]
+    slug: "etude-notariale-roulet"
+  - name: "Architecte Pierre Müller SA"
+    aliases: ["Pierre Müller", "Müller SA", "Architecte Müller"]
+    slug: "architecte-pierre-muller"
+  - name: "Cabinet Dentaire Dr. Bernasconi"
+    aliases: ["Dr Bernasconi", "Bernasconi", "Cabinet Bernasconi"]
+    slug: "cabinet-dentaire-bernasconi"
+  - name: "Boutique Mode Délice Sàrl"
+    aliases: ["Mode Délice", "Délice Sàrl", "Boutique Délice"]
+    slug: "boutique-mode-delice"
+  - name: "Cabinet Avocat Vionnet & Partners"
+    aliases: ["Vionnet", "Vionnet & Partners", "Cabinet Vionnet", "Me Vionnet"]
+    slug: "cabinet-avocat-vionnet"
+  - name: "Brasserie La Cigale Sàrl"
+    aliases: ["La Cigale", "Brasserie La Cigale", "Cigale Sàrl"]
+    slug: "brasserie-la-cigale"
+  - name: "Treuhand Berner & Co AG"
+    aliases: ["Berner & Co", "Treuhand Berner", "Berner AG"]
+    slug: "treuhand-berner-co"
+  - name: "Cafe du Centre"
+    aliases: ["Café du Centre", "Cafe Centre"]
+    slug: "cafe-du-centre"
+  - name: "Boulangerie La Mie Dorée Sàrl"
+    aliases: ["La Mie Dorée", "Boulangerie Mie Dorée", "Mie Dorée Sàrl"]
+    slug: "boulangerie-la-mie-doree"
+  - name: "Études Cabinet Tanguy Lachat"
+    aliases: ["Cabinet Tanguy Lachat", "Tanguy Lachat", "Lachat Études"]
+    slug: "etudes-cabinet-tanguy-lachat"
 
 # Logs
 logging:
