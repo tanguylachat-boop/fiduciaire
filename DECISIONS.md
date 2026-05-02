@@ -231,3 +231,24 @@ Format : ADR léger. Une décision = un bloc daté, contexte court, choix, raiso
 **Décision.** Garder l'existant à la racine en standby, scaffolder la POC dans `worker/`, `data/`, `docs/`. README clarifie. Pas de move git pour ne pas alourdir l'historique.
 
 **Pourquoi.** Évite un commit "rename" qui pollue le diff. La POC vit dans son arbo isolée. Si on a besoin de nettoyer plus tard, un seul `git mv` final.
+
+---
+
+## 2026-04-30 — Stratégie bench : Qwen 7B dev / 14B référence
+
+**Contexte.** Bench V1 (Qwen 7B) a duré 1 h 30 sur MBP 16 GB à cause de la pression RAM (Chrome + Cowork + autres apps en parallèle). Qwen 14B (9 GB) sature systématiquement la RAM unifiée 16 GB partagée OS + IDE + Ollama.
+
+**Décision.** Itération dev sur Qwen 7B uniquement (`primary` ET `fallback` 7B dans `config.yaml` dev). Bench final de référence (avant chaque livrable client) sur Qwen 14B, avec apps non essentielles fermées et ≥ 6 GB RAM libres confirmés.
+
+**Conséquence.** Tous les chiffres communiqués au client doivent préciser le modèle utilisé. La propal Phi vendredi cite le score Qwen 14B + extrapolation Llama 70B prod, jamais 7B. Pas de citation hors contexte des résultats 7B en commercial.
+
+---
+
+## 2026-04-30 — known_clients chargés depuis le corpus
+
+**Contexte.** `config.example.yaml` ne contenait que 2 `clients` (Le Rivage, Atelier Boillat), expliquant le score `client` à 30 % sur bench V1 — le LLM ne pouvait pas matcher les 12 autres clients du corpus 20 docs.
+
+**Décision.** Pour le POC sur le corpus 20 docs, charger manuellement les 14 clients du corpus dans `config.yaml` (et `config.example.yaml` pour la traçabilité versionnée du POC, données synthétiques). À court terme (Phase 1.5), automatiser : chaque cabinet client fournit son fichier d'export "liste clients" → `clients` généré automatiquement.
+
+**Conséquence.** Le score `client` mesurable monte mécaniquement avec une `clients` exhaustive. À tester sur 50 docs Jeudi avec 30+ clients distincts. Si le LLM ne tient pas le matching tolérant à grande échelle, basculer sur retrieval lexical (rapidfuzz) en post-traitement.
+

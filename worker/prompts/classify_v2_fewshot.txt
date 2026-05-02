@@ -4,7 +4,7 @@ cabinet fiduciaire. Tu dois renvoyer UN SEUL objet JSON valide, rien d'autre.
 
 Schéma exigé :
 {
-  "type": "facture_fournisseur" | "note_frais" | "releve_bancaire" | "document_fiscal" | "courrier" | "autre",
+  "type": "facture_fournisseur" | "note_frais" | "releve_bancaire" | "document_fiscal" | "contrat" | "courrier" | "autre",
   "type_confidence": float entre 0 et 1,
   "client": string | null,             // raison sociale CANONIQUE du CLIENT du cabinet (le destinataire ultime de la pièce, pas le fournisseur)
   "client_confidence": float entre 0 et 1,
@@ -23,6 +23,18 @@ Règles :
 - "fournisseur" = émetteur du document. Différent du client.
 - N'invente aucune valeur. En cas de doute, mets null + confidence basse.
 - Pas de markdown, pas de bloc ```. Sortie = JSON brut, parsable directement.
+
+Définitions des types :
+- facture_fournisseur : facture commerciale émise par une entreprise privée (télécom, énergie, fournisseur de biens/services) adressée au cabinet ou à un client du cabinet.
+- note_frais : ticket / quittance / reçu de petit montant, achat ponctuel (restaurant, supermarché, café, taxi). Souvent sans destinataire identifié.
+- releve_bancaire : extrait de compte d'une banque ou d'un établissement financier (UBS, PostFinance, Raiffeisen) listant des opérations.
+- document_fiscal : tout document émis par une administration publique suisse fédérale, cantonale ou communale (cf. règle ci-dessous).
+- contrat : document juridique d'engagement réciproque entre deux parties (bail commercial, mandat fiduciaire, avenant, contrat de prestation, accord de confidentialité, contrat de travail). Indices : articles numérotés, signatures de deux parties, durée d'engagement, mention "Entre les soussignés".
+- courrier : lettre administrative ou commerciale sans transaction monétaire ni engagement contractuel.
+- autre : tout document qui ne rentre dans aucune catégorie ci-dessus.
+
+RÈGLE DÉSAMBIGUÏSATION ADMINISTRATION PUBLIQUE :
+Si la source du document est une administration publique suisse (AFC / Administration fédérale des contributions, AVS / Assurance-vieillesse, ESTV, Caisse cantonale de compensation, OCAS, Administration fiscale cantonale, Office cantonal des impôts, OFAS, Office fédéral des assurances sociales), le type est OBLIGATOIREMENT `document_fiscal`, jamais `facture_fournisseur` ni `releve_bancaire` — même si le document mentionne "compte", "cotisation", "facture", "décompte" ou "acompte".
 
 RÈGLE CRUCIALE — matching client :
 Le champ `client` doit IMPÉRATIVEMENT être l'un des noms canoniques de la liste KNOWN_CLIENTS ci-dessous, ou null.
@@ -80,6 +92,47 @@ Carte VISA xxxx 1234 — Pierre Müller
 [fin OCR exemple]
 [JSON attendu]
 {"type":"note_frais","type_confidence":0.85,"client":null,"client_confidence":0.0,"date":"2024-03-14","date_confidence":0.95,"montant_chf":47.8,"montant_confidence":0.95,"fournisseur":"Migros","devise":"CHF","raisonnement_court":"Note de frais Migros par Pierre Müller. Aucun client connu identifié dans la liste."}
+
+Exemple A — bail commercial → contrat :
+[OCR exemple]
+Contrat de bail commercial. Conformément aux art. 253 ss CO.
+Bailleur : Société Immobilière Lac Léman SA. Locataire : Cabinet Avocat Vionnet & Partners.
+Loyer mensuel : CHF 4'200.00. Durée : 5 ans à compter du 1er mai 2026.
+Entre les soussignés, signatures des parties.
+[fin OCR exemple]
+[JSON attendu]
+{"type":"contrat","type_confidence":0.95,"client":"Cabinet Avocat Vionnet & Partners","client_confidence":0.9,"date":"2026-05-01","date_confidence":0.9,"montant_chf":4200.0,"montant_confidence":0.9,"fournisseur":"Société Immobilière Lac Léman SA","devise":"CHF","raisonnement_court":"Bail commercial CO art. 253. Locataire = Cabinet Vionnet, loyer mensuel 4200 CHF. Engagement réciproque = contrat."}
+
+Exemple B — avenant mandat → contrat :
+[OCR exemple]
+AVENANT N°2 AU CONTRAT DE MANDAT.
+Mandant : Brasserie La Cigale Sàrl.
+Mandataire : Fiduciaire Étude Comptable Genevoise SARL.
+Tarif horaire : CHF 185.- /h HT. Date avenant : 18 avril 2026.
+[fin OCR exemple]
+[JSON attendu]
+{"type":"contrat","type_confidence":0.92,"client":"Brasserie La Cigale Sàrl","client_confidence":0.9,"date":"2026-04-18","date_confidence":0.95,"montant_chf":185.0,"montant_confidence":0.85,"fournisseur":"Fiduciaire Étude Comptable Genevoise SARL","devise":"CHF","raisonnement_court":"Avenant au contrat de mandat fiduciaire. Mandant = client = Brasserie La Cigale, tarif 185 CHF/h."}
+
+Exemple C — décompte TVA AFC → document_fiscal :
+[OCR exemple]
+Administration fédérale des contributions (AFC).
+DÉCOMPTE TVA - 1er trimestre 2026.
+Assujetti : SARL Étude Comptable Genevoise.
+N° TVA : CHE-258.741.963 TVA.
+Solde TVA à payer : CHF 11'935.65. Date d'échéance : 02.04.2026.
+[fin OCR exemple]
+[JSON attendu]
+{"type":"document_fiscal","type_confidence":0.97,"client":"SARL Étude Comptable Genevoise","client_confidence":0.95,"date":"2026-04-02","date_confidence":0.95,"montant_chf":11935.65,"montant_confidence":0.95,"fournisseur":"Administration fédérale des contributions (AFC)","devise":"CHF","raisonnement_court":"Décompte TVA AFC. Source = administration publique → document_fiscal. Le mot 'décompte' ne fait pas un relevé bancaire."}
+
+Exemple D — facture cotisations AVS → document_fiscal :
+[OCR exemple]
+Caisse cantonale AVS Genève.
+FACTURE D'ACOMPTE COTISATIONS - Trimestre 2 / 2026.
+Affilié : Boulangerie La Mie Dorée Sàrl.
+Total acompte : CHF 10'187.26. Échéance : 02.04.2026.
+[fin OCR exemple]
+[JSON attendu]
+{"type":"document_fiscal","type_confidence":0.95,"client":"Boulangerie La Mie Dorée Sàrl","client_confidence":0.95,"date":"2026-04-02","date_confidence":0.95,"montant_chf":10187.26,"montant_confidence":0.95,"fournisseur":"Caisse cantonale AVS Genève","devise":"CHF","raisonnement_court":"Facture acompte AVS. Source = Caisse cantonale AVS = administration publique → document_fiscal malgré le mot 'facture'."}
 
 [REAL OCR]
 {OCR_TEXT}
