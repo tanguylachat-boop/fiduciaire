@@ -7,6 +7,7 @@ JSON strict. 1 retry sur erreur de parsing avec instruction explicite.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ ALLOWED_TYPES = {
     "note_frais",
     "releve_bancaire",
     "document_fiscal",
+    "contrat",
     "courrier",
     "autre",
 }
@@ -161,6 +163,33 @@ def classify(
     c.error = last_error
     c.retries = 1
     return c
+
+
+def warmup_ollama(endpoint: str, model: str, timeout_s: int = 120) -> bool:
+    """Précharge le modèle Ollama en RAM pour éviter le timeout 60s
+    au premier doc réel (cold start). Appel léger (1 token) qui force
+    Ollama à charger les poids du modèle.
+
+    Non bloquant : log un warning si échec, retourne False, mais ne lève pas.
+    """
+    log = logging.getLogger("fiduciaire.classify")
+    payload = {
+        "model": model,
+        "prompt": "ok",
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.0, "num_predict": 1},
+    }
+    t0 = time.perf_counter()
+    try:
+        r = httpx.post(f"{endpoint}/api/generate", json=payload, timeout=timeout_s)
+        r.raise_for_status()
+        elapsed = time.perf_counter() - t0
+        log.info("Ollama warmup OK (%s) en %.1fs", model, elapsed)
+        return True
+    except Exception as e:
+        log.warning("Ollama warmup échec (non bloquant) pour %s: %s", model, e)
+        return False
 
 
 def merge_with_qr(c: Classification, qr) -> Classification:

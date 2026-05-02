@@ -34,6 +34,7 @@ from typing import Any
 from fiduciaire_worker import classify as classify_mod
 from fiduciaire_worker import ocr as ocr_mod
 from fiduciaire_worker import qrbill
+from fiduciaire_worker.classify import warmup_ollama
 from fiduciaire_worker.config import REPO_ROOT, load_config
 
 SCORED_FIELDS = ("type", "client", "date", "montant_chf")
@@ -292,6 +293,11 @@ def main() -> int:
     print(f"  modèle   : {config.llm.primary}")
     print(f"  prompt   : {config.llm.prompt_file.relative_to(REPO_ROOT)}")
     print(f"  clients  : {len(config.known_clients)} canoniques")
+    print()
+
+    print(f"Warmup Ollama ({config.llm.primary}) ...", end=" ", flush=True)
+    ok = warmup_ollama(config.llm.endpoint, config.llm.primary, timeout_s=config.llm.timeout_s)
+    print("✓" if ok else "✗ (non bloquant)")
     print()
 
     results: list[DocResult] = []

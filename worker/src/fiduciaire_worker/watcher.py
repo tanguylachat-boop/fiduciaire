@@ -16,6 +16,7 @@ from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedE
 from watchdog.observers import Observer
 
 from . import db
+from .classify import warmup_ollama
 from .config import Config
 from .pipeline import process_document
 
@@ -80,6 +81,7 @@ class InboxHandler(FileSystemEventHandler):
 
 def run(config: Config) -> None:
     config.paths.ensure()
+    warmup_ollama(config.llm.endpoint, config.llm.primary, timeout_s=config.llm.timeout_s)
     handler = InboxHandler(config)
     observer = Observer()
     observer.schedule(handler, str(config.paths.inbox), recursive=False)
