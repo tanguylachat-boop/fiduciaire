@@ -128,6 +128,7 @@ def process_document(
         timeout_s=config.llm.timeout_s,
         num_predict=config.llm.num_predict,
         temperature=config.llm.temperature,
+        num_ctx=config.llm.num_ctx,
     )
     db.log_action(
         conn,

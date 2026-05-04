@@ -95,13 +95,20 @@ def _call_ollama(
     timeout_s: int,
     num_predict: int,
     temperature: float,
+    num_ctx: int,
 ) -> tuple[float, str]:
     payload = {
         "model": model,
         "prompt": prompt,
         "format": "json",
         "stream": False,
-        "options": {"temperature": temperature, "num_predict": num_predict},
+        "options": {
+            "temperature": temperature,
+            "num_predict": num_predict,
+            # Cap KV cache : sans ça, llama3.3 applique son ctx natif 131072
+            # → CPU offloading sur A6000 48 GB → ~0.8 tok/s génération.
+            "num_ctx": num_ctx,
+        },
     }
     t0 = time.perf_counter()
     r = httpx.post(f"{endpoint}/api/generate", json=payload, timeout=timeout_s)
@@ -119,6 +126,7 @@ def classify(
     timeout_s: int = 120,
     num_predict: int = 512,
     temperature: float = 0.0,
+    num_ctx: int = 4096,
 ) -> Classification:
     template = template_path.read_text(encoding="utf-8")
     prompt = _build_prompt(template, known_clients, ocr_text)
@@ -130,7 +138,7 @@ def classify(
     for attempt in range(2):
         try:
             elapsed, response = _call_ollama(
-                endpoint, model, prompt, timeout_s, num_predict, temperature
+                endpoint, model, prompt, timeout_s, num_predict, temperature, num_ctx
             )
         except Exception as e:
             last_error = f"{type(e).__name__}: {e}"
@@ -171,10 +179,15 @@ def classify(
     return c
 
 
-def warmup_ollama(endpoint: str, model: str, timeout_s: int = 120) -> bool:
+def warmup_ollama(
+    endpoint: str, model: str, timeout_s: int = 120, num_ctx: int = 4096
+) -> bool:
     """Précharge le modèle Ollama en RAM pour éviter le timeout 60s
     au premier doc réel (cold start). Appel léger (1 token) qui force
     Ollama à charger les poids du modèle.
+
+    num_ctx doit matcher celui des appels classify() — sinon Ollama recharge
+    le modèle au premier vrai doc (ctx mismatch invalide le cache).
 
     Non bloquant : log un warning si échec, retourne False, mais ne lève pas.
     """
@@ -184,7 +197,7 @@ def warmup_ollama(endpoint: str, model: str, timeout_s: int = 120) -> bool:
         "prompt": "ok",
         "format": "json",
         "stream": False,
-        "options": {"temperature": 0.0, "num_predict": 1},
+        "options": {"temperature": 0.0, "num_predict": 1, "num_ctx": num_ctx},
     }
     t0 = time.perf_counter()
     try:

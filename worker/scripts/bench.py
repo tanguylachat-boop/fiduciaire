@@ -142,6 +142,7 @@ def run_one(pdf: Path, expected: dict[str, Any], config) -> DocResult:
         timeout_s=config.llm.timeout_s,
         num_predict=config.llm.num_predict,
         temperature=config.llm.temperature,
+        num_ctx=config.llm.num_ctx,
     )
     res.latency_s = classification.latency_s
     if classification.error:
@@ -295,8 +296,13 @@ def main() -> int:
     print(f"  clients  : {len(config.known_clients)} canoniques")
     print()
 
-    print(f"Warmup Ollama ({config.llm.primary}) ...", end=" ", flush=True)
-    ok = warmup_ollama(config.llm.endpoint, config.llm.primary, timeout_s=config.llm.timeout_s)
+    print(f"Warmup Ollama ({config.llm.primary}, num_ctx={config.llm.num_ctx}) ...", end=" ", flush=True)
+    ok = warmup_ollama(
+        config.llm.endpoint,
+        config.llm.primary,
+        timeout_s=config.llm.timeout_s,
+        num_ctx=config.llm.num_ctx,
+    )
     print("✓" if ok else "✗ (non bloquant)")
     print()
 

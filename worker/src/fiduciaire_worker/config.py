@@ -41,6 +41,7 @@ class LLMConfig:
     timeout_s: int
     temperature: float
     num_predict: int
+    num_ctx: int
 
 
 @dataclass
@@ -98,6 +99,10 @@ def load_config(config_path: Path | None = None) -> Config:
         timeout_s=int(llm_raw.get("timeout_s", 120)),
         temperature=float(llm_raw.get("temperature", 0.0)),
         num_predict=int(llm_raw.get("num_predict", 512)),
+        # 4096 = prompt classify_v2_fewshot (~1500 tok) + OCR (~150) + output 512 + marge.
+        # Sans cap, Ollama applique le ctx du modèle (131072 sur llama3.3) qui
+        # explose le KV cache et force du CPU offloading → ~0.8 tok/s génération.
+        num_ctx=int(llm_raw.get("num_ctx", 4096)),
     )
 
     naming = raw.get("naming", {})
