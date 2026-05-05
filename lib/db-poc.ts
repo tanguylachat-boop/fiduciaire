@@ -1,0 +1,245 @@
+// Driver SQLite local pour le dashboard POC /review.
+// Lit la base alimentée par worker/ (data/fiduciaire.sqlite).
+// Aucune écriture côté Next : toutes les mutations passent par le worker Python.
+
+import Database from "better-sqlite3";
+import path from "node:path";
+import fs from "node:fs";
+
+// Résolution path robuste : env var override → cwd → resolve relatif au fichier.
+// Next 16 + turbopack peut placer cwd ailleurs si plusieurs lockfiles existent.
+function resolveDbPath(): string {
+  const env = process.env.FIDUCIAIRE_DB_PATH;
+  if (env) return path.resolve(env);
+  const candidates = [
+    path.join(process.cwd(), "data", "fiduciaire.sqlite"),
+    // Quand cwd diverge (workspace root vs project), on remonte depuis ce fichier.
+    path.resolve(__dirname, "..", "data", "fiduciaire.sqlite"),
+    path.resolve(__dirname, "..", "..", "data", "fiduciaire.sqlite"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
+const DB_PATH = resolveDbPath();
+
+// Pas de mémoïsation : ouvrir/fermer à chaque query évite les caches stale
+// quand le worker Python ré-écrit la DB. Coût ~1 ms par open sur SQLite local.
+// Si la DB n'existe pas, ouvre une DB en mémoire vide pour que les
+// `tableExists` retournent false sans planter.
+function withDb<T>(fn: (db: Database.Database) => T): T {
+  const dbExistsOnDisk = fs.existsSync(DB_PATH);
+  const conn = dbExistsOnDisk
+    ? new Database(DB_PATH, { readonly: true, fileMustExist: true })
+    : new Database(":memory:");
+  try {
+    return fn(conn);
+  } finally {
+    conn.close();
+  }
+}
+
+function tableExists(db: Database.Database, name: string): boolean {
+  try {
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+      .get(name) as { name?: string } | undefined;
+    return !!row?.name;
+  } catch {
+    return false;
+  }
+}
+
+export type DocStatus =
+  | "ingested"
+  | "classified"
+  | "routed"
+  | "needs_review"
+  | "failed"
+  | "duplicate";
+
+export type DocRow = {
+  id: number;
+  sha256: string;
+  original_filename: string;
+  archive_path: string;
+  type: string | null;
+  client_slug: string | null;
+  doc_date: string | null;
+  montant_chf: number | null;
+  status: DocStatus;
+  needs_review_reason: string | null;
+  final_path: string | null;
+  created_at: string;
+  updated_at: string;
+  classification_json: string | null;
+};
+
+export type ActionRow = {
+  id: number;
+  document_id: number;
+  action: string;
+  duration_ms: number | null;
+  ok: number;
+  error: string | null;
+  created_at: string;
+};
+
+export function listDocuments(limit = 200): DocRow[] {
+  return withDb((db) => {
+    if (!tableExists(db, "documents")) return [];
+    return db
+      .prepare(
+        `SELECT id, sha256, original_filename, archive_path, type, client_slug,
+                doc_date, montant_chf, status, needs_review_reason, final_path,
+                created_at, updated_at, classification_json
+         FROM documents
+         ORDER BY datetime(created_at) DESC
+         LIMIT ?`,
+      )
+      .all(limit) as DocRow[];
+  });
+}
+
+export function listNeedsReview(): DocRow[] {
+  return withDb((db) => {
+    if (!tableExists(db, "documents")) return [];
+    return db
+      .prepare(
+        `SELECT id, sha256, original_filename, archive_path, type, client_slug,
+                doc_date, montant_chf, status, needs_review_reason, final_path,
+                created_at, updated_at, classification_json
+         FROM documents
+         WHERE status='needs_review'
+         ORDER BY datetime(created_at) DESC`,
+      )
+      .all() as DocRow[];
+  });
+}
+
+export function listRecentActions(hoursBack = 24, limit = 30): ActionRow[] {
+  return withDb((db) => {
+    if (!tableExists(db, "actions")) return [];
+    return db
+      .prepare(
+        `SELECT id, document_id, action, duration_ms, ok, error, created_at
+         FROM actions
+         WHERE datetime(created_at) >= datetime('now', ?)
+         ORDER BY datetime(created_at) DESC
+         LIMIT ?`,
+      )
+      .all(`-${hoursBack} hours`, limit) as ActionRow[];
+  });
+}
+
+export type Kpis = {
+  totalDocs: number;
+  routedDocs: number;
+  needsReviewCount: number;
+  failedCount: number;
+  precisionPct: number;
+  classifyLatencyMedianMs: number | null;
+};
+
+export function getKpis(): Kpis {
+  const empty: Kpis = {
+    totalDocs: 0,
+    routedDocs: 0,
+    needsReviewCount: 0,
+    failedCount: 0,
+    precisionPct: 0,
+    classifyLatencyMedianMs: null,
+  };
+  return withDb((db) => {
+    if (!tableExists(db, "documents")) return empty;
+
+    const counts = db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status='routed' THEN 1 ELSE 0 END) AS routed,
+           SUM(CASE WHEN status='needs_review' THEN 1 ELSE 0 END) AS review,
+           SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+         FROM documents`,
+      )
+      .get() as {
+      total: number;
+      routed: number | null;
+      review: number | null;
+      failed: number | null;
+    };
+
+    const routed = counts.routed ?? 0;
+    const review = counts.review ?? 0;
+    const failed = counts.failed ?? 0;
+    const decided = routed + review + failed;
+    const precisionPct = decided > 0 ? (routed / decided) * 100 : 0;
+
+    let medianMs: number | null = null;
+    if (tableExists(db, "actions")) {
+      const rows = db
+        .prepare(
+          `SELECT duration_ms FROM actions
+           WHERE action='classify' AND duration_ms IS NOT NULL AND ok=1
+           ORDER BY duration_ms`,
+        )
+        .all() as { duration_ms: number }[];
+      if (rows.length > 0) {
+        const mid = Math.floor(rows.length / 2);
+        medianMs =
+          rows.length % 2
+            ? rows[mid].duration_ms
+            : Math.round((rows[mid - 1].duration_ms + rows[mid].duration_ms) / 2);
+      }
+    }
+
+    return {
+      totalDocs: counts.total ?? 0,
+      routedDocs: routed,
+      needsReviewCount: review,
+      failedCount: failed,
+      precisionPct,
+      classifyLatencyMedianMs: medianMs,
+    };
+  });
+}
+
+export type VolumePoint = { date: string; volume: number };
+
+export function getVolumeLast7Days(): VolumePoint[] {
+  const emptyPoints = (): VolumePoint[] =>
+    Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return { date: d.toISOString().slice(0, 10), volume: 0 };
+    });
+
+  return withDb((db) => {
+    if (!tableExists(db, "documents")) return emptyPoints();
+    const rows = db
+      .prepare(
+        `SELECT date(created_at) AS day, COUNT(*) AS n
+         FROM documents
+         WHERE date(created_at) >= date('now', '-6 days')
+         GROUP BY day
+         ORDER BY day ASC`,
+      )
+      .all() as { day: string; n: number }[];
+    const byDay = new Map(rows.map((r) => [r.day, r.n]));
+    const out: VolumePoint[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      out.push({ date: iso, volume: byDay.get(iso) ?? 0 });
+    }
+    return out;
+  });
+}
+
+export function dbExists(): boolean {
+  if (!fs.existsSync(DB_PATH)) return false;
+  return withDb((db) => tableExists(db, "documents"));
+}

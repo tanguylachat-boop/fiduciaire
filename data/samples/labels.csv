@@ -19,3 +19,33 @@ filename,type,client,date,montant_chf,fournisseur,devise,notes
 18_coop_facture.pdf,note_frais,inconnu,2026-04-17,68.50,,CHF,Reçu Coop Pronto - achats économat type ticket
 19_avs_facture_cotisations.pdf,document_fiscal,Boulangerie La Mie Dorée Sàrl,2026-04-02,10187.26,,CHF,Facture acompte cotisations AVS T2 2026
 20_recu_manuscrit_artisan.pdf,facture_fournisseur,Cafe du Centre,2026-04-25,388.50,,CHF,CAS LIMITE - facture style manuscrit dégradé (test OCR limites)
+21_ubs_releve_t1.pdf,releve_bancaire,Restaurant Le Rivage SA,2026-03-31,40239.00,UBS Switzerland AG,CHF,Relevé UBS T1 — pattern solde final
+22_postfinance_releve_avril.pdf,releve_bancaire,Cabinet Médical Dr. Martin Sàrl,2026-04-30,8790.30,PostFinance SA,CHF,Relevé PostFinance avril
+23_bcv_releve_mars.pdf,releve_bancaire,SARL Étude Comptable Genevoise,2026-03-31,21069.50,Banque Cantonale Vaudoise,CHF,Relevé BCV mars
+24_raiffeisen_releve.pdf,releve_bancaire,Bauunternehmung Zumstein AG,2026-04-30,39114.80,Raiffeisenbank,CHF,Auszug Raiffeisen DE
+25_credit_suisse_releve.pdf,releve_bancaire,Étude Notariale Roulet & Associés,2026-04-30,82187.20,Credit Suisse (Schweiz) AG,CHF,Relevé épargne CS
+26_zkb_releve.pdf,releve_bancaire,Treuhand Berner & Co AG,2026-04-30,140708.90,Zürcher Kantonalbank,CHF,Auszug ZKB DE
+27_swisspost_qr.pdf,facture_fournisseur,Architecte Pierre Müller SA,2026-04-14,45.80,Die Schweizerische Post AG,CHF,Post DE QR-bill
+28_cff_facture_qr.pdf,facture_fournisseur,Cabinet Avocat Vionnet & Partners,2026-04-22,890.00,Schweizerische Bundesbahnen SBB,CHF,CFF business travel QR
+29_groupemutuel_qr.pdf,facture_fournisseur,Cabinet Dentaire Dr. Bernasconi,2026-04-02,2410.00,Groupe Mutuel Assurances,CHF,Assurance LAA QR
+30_salt_facture_qr.pdf,facture_fournisseur,Boutique Mode Délice Sàrl,2026-04-18,178.50,Salt Mobile SA,CHF,Salt mobile QR
+31_iwb_basel_qr.pdf,facture_fournisseur,Brasserie La Cigale Sàrl,2026-04-09,612.40,Industrielle Werke Basel,CHF,IWB Basel DE QR
+32_office_world_qr.pdf,facture_fournisseur,Études Cabinet Tanguy Lachat,2026-04-16,348.20,Office World AG,CHF,Fournitures bureau QR
+33_axa_assurance_qr.pdf,facture_fournisseur,Boulangerie La Mie Dorée Sàrl,2026-04-11,1525.00,AXA Assurances SA,CHF,AXA RC commerce QR
+34_localnet_qr.pdf,facture_fournisseur,Cafe du Centre,2026-04-05,58.90,Localnet AG,CHF,Internet pro QR
+35_afc_decompte_tva_t1.pdf,document_fiscal,Restaurant Le Rivage SA,2026-04-02,11869.02,Administration fédérale des contributions (AFC),CHF,Décompte TVA T1 AFC
+36_avs_cotisations_t2.pdf,document_fiscal,Cabinet Médical Dr. Martin Sàrl,2026-04-02,10308.24,Caisse cantonale AVS Genève,CHF,AVS T2 acompte
+37_taxation_communale.pdf,document_fiscal,Architecte Pierre Müller SA,2026-04-12,24230.00,Administration communale de Lausanne,CHF,Taxation communale 2025
+38_estv_mwst_de.pdf,document_fiscal,Bauunternehmung Zumstein AG,2026-04-03,25448.28,Eidgenössische Steuerverwaltung (ESTV),CHF,MWST DE Q1 2026
+39_ofas_contribution.pdf,document_fiscal,SARL Étude Comptable Genevoise,2026-04-08,1250.00,Office fédéral des assurances sociales (OFAS),CHF,Décision OFAS 2026
+40_bail_commercial_v2.pdf,contrat,Boulangerie La Mie Dorée Sàrl,2026-04-25,3850.00,Patrimoine Lausannois SA,CHF,Bail commercial 5 ans
+41_mandat_fiduciaire.pdf,contrat,Brasserie La Cigale Sàrl,2026-05-01,165.00,SARL Étude Comptable Genevoise,CHF,Mandat fiduciaire annuel
+42_contrat_prestation_it.pdf,contrat,Étude Notariale Roulet & Associés,2026-04-22,8400.00,LX Studio SA,CHF,Contrat IT prestation forfait
+43_avenant_loyer.pdf,contrat,Cabinet Avocat Vionnet & Partners,2026-04-14,4305.00,Société Immobilière Lac Léman SA,CHF,Avenant indexation loyer
+44_recu_taxi_flou.pdf,note_frais,inconnu,2026-04-17,38.50,Taxi Phone Geneve,CHF,CAS LIMITE - reçu taxi simulant photo dégradée
+45_recu_manuscrit_2.pdf,note_frais,inconnu,2026-04-19,87.00,Restaurant La Coupole,CHF,CAS LIMITE - manuscrit/dégradé
+46_quittance_parking.pdf,note_frais,inconnu,2026-04-21,18.00,Parking Cornavin SA,CHF,Quittance parking standard
+47_facture_hotel.pdf,facture_fournisseur,Cabinet Avocat Vionnet & Partners,2026-04-24,977.00,Hotel Beau-Rivage Lausanne,CHF,Facture hôtel — pas note frais (destinataire identifié)
+48_ticket_coop_pronto.pdf,note_frais,inconnu,2026-04-23,14.30,Coop Pronto,CHF,Ticket caisse économat
+49_essence_socar.pdf,note_frais,inconnu,2026-04-26,98.54,SOCAR Energy Switzerland,CHF,Carburant véhicule professionnel
+50_courrier_relance.pdf,courrier,Restaurant Le Rivage SA,2026-04-28,,Swisscom (Suisse) SA,CHF,Lettre de rappel — pas une facture
