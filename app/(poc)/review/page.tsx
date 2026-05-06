@@ -10,6 +10,10 @@ import {
   Sparkles,
   LayoutDashboard,
   ArrowRight,
+  FileScan,
+  Building2,
+  CloudOff,
+  HelpCircle,
 } from "lucide-react";
 import { Kpi } from "@/components/ui/Kpi";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
@@ -144,13 +148,23 @@ const PIPELINE_STEPS = [
 export default function ReviewDemoPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-10 lg:px-10 lg:py-14">
+      {/* TOP BAR — wordmark */}
+      <header className="mb-8 flex items-center justify-between">
+        <LxWordmark />
+        <div className="hidden items-center gap-2 text-xs text-[var(--color-text-dim)] sm:flex">
+          <span>Démo cabinet fiduciaire</span>
+          <span aria-hidden>·</span>
+          <span className="font-mono">06.05.2026</span>
+        </div>
+      </header>
+
       {/* HERO */}
       <section className="rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-elevated)] px-8 py-10 lg:px-12 lg:py-14">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
             <Badge variant="info" className="mb-4">
               <ShieldCheck size={12} />
-              Démo cabinet fiduciaire — 2026
+              Bench V2 — 2026-05-04 · Qwen 14B Q4
             </Badge>
             <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">
               Pipeline IA Documentaire
@@ -179,7 +193,7 @@ export default function ReviewDemoPage() {
               </div>
             </div>
             <div className="text-xs text-[var(--color-text-dim)]">
-              Bench V2 — corpus 20 docs, Qwen 14B Q4
+              Bench V2 — 04.05.2026 · corpus 20 docs · RunPod A6000 mirror
             </div>
           </div>
         </div>
@@ -395,12 +409,108 @@ export default function ReviewDemoPage() {
         </Card>
       </section>
 
+      {/* ARCHITECTURE PHYSIQUE — schéma visuel */}
+      <section className="mt-8">
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Schéma de déploiement physique</CardTitle>
+              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                Le flux des données — tout reste dans le réseau du cabinet
+              </p>
+            </div>
+            <Badge variant="success">
+              <CloudOff size={12} />
+              Zero cloud
+            </Badge>
+          </CardHeader>
+          <CardBody>
+            <div className="rounded-xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-bg)] p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-dim)]">
+                  Réseau local du cabinet
+                </span>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-red-400/80">
+                  ✕ Internet — bloqué
+                </span>
+              </div>
+              <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
+                <ArchNode
+                  icon={FileScan}
+                  title="Documents"
+                  desc="PDF, scans, photos"
+                  hint="déposés dans le dossier surveillé"
+                />
+                <ArchArrow />
+                <ArchNode
+                  icon={Server}
+                  title="Mac Mini M4 Pro"
+                  desc="Qwen 14B Q4 local"
+                  hint="OCR + classification + extraction"
+                  highlight
+                />
+                <ArchArrow />
+                <ArchNode
+                  icon={Building2}
+                  title="Comptable"
+                  desc="Dashboard /review"
+                  hint="validation express + export"
+                />
+              </div>
+              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-emerald-400/80">
+                <Lock size={14} />
+                <span>
+                  Aucun appel sortant — modèle, données et résultats restent
+                  on-premise
+                </span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      </section>
+
+      {/* FAQ */}
+      <section className="mt-8">
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Questions fréquentes</CardTitle>
+              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                Les inquiétudes habituelles, traitées sans détour
+              </p>
+            </div>
+            <Badge variant="muted">
+              <HelpCircle size={12} />6 questions
+            </Badge>
+          </CardHeader>
+          <CardBody>
+            <div className="divide-y divide-[var(--color-border)]">
+              {FAQ.map((item, i) => (
+                <details
+                  key={item.q}
+                  className="group py-3 first:pt-0 last:pb-0"
+                  open={i === 0}
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-[var(--color-text)] hover:text-white">
+                    <span>{item.q}</span>
+                    <span className="text-[var(--color-text-dim)] transition-transform group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-2 max-w-3xl pr-8 text-sm leading-relaxed text-[var(--color-text-muted)]">
+                    {item.a}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      </section>
+
       {/* FOOTER */}
       <footer className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-xs text-[var(--color-text-dim)] sm:flex-row">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-[var(--color-text-muted)]">
-            LX Studio
-          </span>
+          <LxWordmark size="sm" />
           <span aria-hidden>·</span>
           <span>Tanguy Lachat</span>
         </div>
@@ -451,3 +561,115 @@ function Guarantee({ children }: { children: React.ReactNode }) {
     </li>
   );
 }
+
+function LxWordmark({ size = "md" }: { size?: "sm" | "md" }) {
+  const dim = size === "sm" ? 22 : 30;
+  return (
+    <div className="flex items-center gap-2.5">
+      <span
+        className="grid place-items-center rounded-lg bg-gradient-to-br from-[var(--color-accent)] to-emerald-500 font-bold text-white shadow-md"
+        style={{ width: dim, height: dim, fontSize: dim * 0.45 }}
+        aria-hidden
+      >
+        LX
+      </span>
+      <span
+        className={
+          size === "sm"
+            ? "text-sm font-semibold tracking-tight text-[var(--color-text-muted)]"
+            : "text-base font-semibold tracking-tight text-[var(--color-text)]"
+        }
+      >
+        LX&nbsp;Studio
+      </span>
+    </div>
+  );
+}
+
+function ArchNode({
+  icon: Icon,
+  title,
+  desc,
+  hint,
+  highlight = false,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  desc: string;
+  hint?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={
+        highlight
+          ? "flex flex-col items-center rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-5 text-center ring-1 ring-emerald-500/20"
+          : "flex flex-col items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] p-5 text-center"
+      }
+    >
+      <div
+        className={
+          highlight
+            ? "mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400"
+            : "mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
+        }
+      >
+        <Icon size={20} />
+      </div>
+      <div className="text-sm font-semibold">{title}</div>
+      <div
+        className={
+          highlight
+            ? "mt-1 text-xs font-medium text-emerald-400/80"
+            : "mt-1 text-xs font-medium text-[var(--color-text-muted)]"
+        }
+      >
+        {desc}
+      </div>
+      {hint && (
+        <div className="mt-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArchArrow() {
+  return (
+    <div className="flex items-center justify-center">
+      <ArrowRight
+        size={20}
+        className="rotate-90 text-[var(--color-text-dim)] lg:rotate-0"
+        aria-hidden
+      />
+    </div>
+  );
+}
+
+const FAQ = [
+  {
+    q: "Et si le modèle se trompe sur un document ?",
+    a: "Tout document avec une confiance inférieure à 86 % est automatiquement envoyé en file de validation manuelle. Le comptable garde la main : il valide, corrige ou rejette. Le modèle ne décide jamais seul d'écrire dans la compta.",
+  },
+  {
+    q: "Que se passe-t-il si le Mac Mini tombe en panne ?",
+    a: "Le pipeline est packagé : un Mac Mini de remplacement peut reprendre le service en 2 heures grâce à une image système chiffrée stockée chez vous. Les données restent sur le NAS du cabinet. SLA contractuel : retour à la production sous 24 h.",
+  },
+  {
+    q: "Comment sont sauvegardées nos données ?",
+    a: "Snapshot quotidien chiffré (AES-256) du dossier de production sur votre NAS interne ou disque externe. Aucune sauvegarde cloud par défaut — option chiffrée vers Infomaniak Suisse uniquement si vous le demandez.",
+  },
+  {
+    q: "Combien de temps pour traiter un document ?",
+    a: "Environ 8 à 12 secondes par document en mode interactif (un par un). En batch nuit, le Mac Mini traite 2 000 à 3 000 docs en 6 heures. Largement suffisant pour la volumétrie d'un cabinet.",
+  },
+  {
+    q: "Est-ce que ça remplace mon comptable ?",
+    a: "Non — et c'est volontaire. L'objectif est d'éliminer 70 % de la saisie répétitive (lecture, classification, indexation) pour libérer du temps sur le conseil client et la révision. Le comptable reste le seul à valider une écriture.",
+  },
+  {
+    q: "Que se passe-t-il si je veux changer de prestataire ?",
+    a: "Le pipeline est open source : code, prompts, schéma de données vous appartiennent. Vos archives sortent en CSV / PDF natif compatibles Bexio, Banana, Sage. Aucun verrou technique ni juridique — c'est votre garantie de réversibilité.",
+  },
+] as const;
