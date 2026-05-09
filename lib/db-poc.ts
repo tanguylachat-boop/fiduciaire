@@ -1,6 +1,7 @@
-// Driver SQLite local pour le dashboard POC /review.
+// Driver SQLite local READ-ONLY pour le dashboard POC.
 // Lit la base alimentée par worker/ (data/fiduciaire.sqlite).
-// Aucune écriture côté Next : toutes les mutations passent par le worker Python.
+// Sprint 0a /review : seules les lectures.
+// Sprint 0a /entries : lectures ici, écritures dans `lib/db-poc-write.ts`.
 
 import Database from "better-sqlite3";
 import path from "node:path";
@@ -242,4 +243,208 @@ export function getVolumeLast7Days(): VolumePoint[] {
 export function dbExists(): boolean {
   if (!fs.existsSync(DB_PATH)) return false;
   return withDb((db) => tableExists(db, "documents"));
+}
+
+// --- Sprint 0a /entries — lectures accounting_entries ----------------------
+
+export type EntryState = "proposed" | "validated" | "rejected";
+
+export type EntryRow = {
+  id: number;
+  client_id: string;
+  source_document_id: number;
+  date: string;
+  debit_account: string;
+  credit_account: string;
+  amount_chf: number;
+  vat_code: string;
+  vat_amount: number | null;
+  description: string;
+  confidence_account: number;
+  confidence_vat: number;
+  reasoning: string | null;
+  sources_json: string | null;
+  state: EntryState;
+  created_at: string;
+  updated_at: string;
+  // Joined depuis documents (lecture seule)
+  doc_filename: string | null;
+  doc_archive_path: string | null;
+  doc_montant_chf: number | null;
+};
+
+export type EntryStateChange = {
+  id: number;
+  entry_id: number;
+  from_state: string;
+  to_state: string;
+  user_id: string | null;
+  reason: string | null;
+  changed_at: string;
+};
+
+export type ClientSummary = {
+  client_id: string;
+  n_proposed: number;
+  n_validated: number;
+  n_rejected: number;
+};
+
+export type EntryFilters = {
+  clientId: string;
+  state?: EntryState;
+  confidenceMin?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  amountMin?: number;
+  amountMax?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export function listClients(): ClientSummary[] {
+  return withDb((db) => {
+    if (!tableExists(db, "accounting_entries")) return [];
+    return db
+      .prepare(
+        `SELECT
+           client_id,
+           SUM(CASE WHEN state='proposed'  THEN 1 ELSE 0 END) AS n_proposed,
+           SUM(CASE WHEN state='validated' THEN 1 ELSE 0 END) AS n_validated,
+           SUM(CASE WHEN state='rejected'  THEN 1 ELSE 0 END) AS n_rejected
+         FROM accounting_entries
+         GROUP BY client_id
+         ORDER BY client_id ASC`,
+      )
+      .all() as ClientSummary[];
+  });
+}
+
+export function listAccountingEntries(filters: EntryFilters): EntryRow[] {
+  const limit = filters.limit ?? 100;
+  const offset = filters.offset ?? 0;
+  return withDb((db) => {
+    if (!tableExists(db, "accounting_entries")) return [];
+    const wheres: string[] = ["e.client_id = ?"];
+    const params: unknown[] = [filters.clientId];
+    if (filters.state) {
+      wheres.push("e.state = ?");
+      params.push(filters.state);
+    }
+    if (typeof filters.confidenceMin === "number") {
+      wheres.push("MIN(e.confidence_account, e.confidence_vat) >= ?");
+      params.push(filters.confidenceMin);
+    }
+    if (filters.dateFrom) {
+      wheres.push("e.date >= ?");
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      wheres.push("e.date <= ?");
+      params.push(filters.dateTo);
+    }
+    if (typeof filters.amountMin === "number") {
+      wheres.push("e.amount_chf >= ?");
+      params.push(filters.amountMin);
+    }
+    if (typeof filters.amountMax === "number") {
+      wheres.push("e.amount_chf <= ?");
+      params.push(filters.amountMax);
+    }
+    params.push(limit, offset);
+    return db
+      .prepare(
+        `SELECT e.*,
+                d.original_filename AS doc_filename,
+                d.archive_path      AS doc_archive_path,
+                d.montant_chf       AS doc_montant_chf
+         FROM accounting_entries e
+         LEFT JOIN documents d ON d.id = e.source_document_id
+         WHERE ${wheres.join(" AND ")}
+         ORDER BY datetime(e.created_at) DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...params) as EntryRow[];
+  });
+}
+
+export function countAccountingEntries(filters: EntryFilters): number {
+  return withDb((db) => {
+    if (!tableExists(db, "accounting_entries")) return 0;
+    const wheres: string[] = ["client_id = ?"];
+    const params: unknown[] = [filters.clientId];
+    if (filters.state) {
+      wheres.push("state = ?");
+      params.push(filters.state);
+    }
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM accounting_entries WHERE ${wheres.join(" AND ")}`,
+      )
+      .get(...params) as { n: number };
+    return row.n;
+  });
+}
+
+export function getAccountingEntry(
+  id: number,
+  clientId: string,
+): EntryRow | null {
+  return withDb((db) => {
+    if (!tableExists(db, "accounting_entries")) return null;
+    const row = db
+      .prepare(
+        `SELECT e.*,
+                d.original_filename AS doc_filename,
+                d.archive_path      AS doc_archive_path,
+                d.montant_chf       AS doc_montant_chf
+         FROM accounting_entries e
+         LEFT JOIN documents d ON d.id = e.source_document_id
+         WHERE e.id = ? AND e.client_id = ?`,
+      )
+      .get(id, clientId) as EntryRow | undefined;
+    return row ?? null;
+  });
+}
+
+export function listEntryHistory(
+  entryId: number,
+  clientId: string,
+): EntryStateChange[] {
+  return withDb((db) => {
+    if (!tableExists(db, "entry_state_changes")) return [];
+    // Cross-tenant : on rejoint accounting_entries pour vérifier le client_id.
+    return db
+      .prepare(
+        `SELECT esc.*
+         FROM entry_state_changes esc
+         JOIN accounting_entries e ON e.id = esc.entry_id
+         WHERE esc.entry_id = ? AND e.client_id = ?
+         ORDER BY esc.id ASC`,
+      )
+      .all(entryId, clientId) as EntryStateChange[];
+  });
+}
+
+export function getDocumentArchivePathForEntry(
+  documentId: number,
+  clientId: string,
+): string | null {
+  return withDb((db) => {
+    if (!tableExists(db, "accounting_entries")) return null;
+    const row = db
+      .prepare(
+        `SELECT d.archive_path
+         FROM documents d
+         JOIN accounting_entries e ON e.source_document_id = d.id
+         WHERE d.id = ? AND e.client_id = ?
+         LIMIT 1`,
+      )
+      .get(documentId, clientId) as { archive_path?: string } | undefined;
+    return row?.archive_path ?? null;
+  });
+}
+
+export function getDbPath(): string {
+  return DB_PATH;
 }
