@@ -1,12 +1,16 @@
 """Initial Bexio sync — pull plan comptable + 100 entries + contacts d'un mandant.
 
-Lecture seule. Aucune écriture vers Bexio. PAT chargé depuis Keychain macOS.
+Lecture seule. Aucune écriture vers Bexio. PAT chargé via la fallback chain
+de `secrets.get_bexio_pat()` : Keychain → .env → raise.
 
 Usage :
   python worker/scripts/initial_bexio_sync.py [--client-id cabinet-pilote-01]
 
 Pré-requis :
-  python -c "import keyring; keyring.set_password('fiduciaire', 'bexio-pat-pilote-dev', '<PAT>')"
+  Soit ajouter au Keychain :
+    python -c "import keyring; keyring.set_password('fiduciaire', 'bexio-pat-pilote-dev', '<PAT>')"
+  Soit définir dans `.env` à la racine du repo :
+    BEXIO_PAT=<PAT>
   Le PAT s'obtient dans Bexio : Profil → Personal Access Tokens → Generate.
 """
 from __future__ import annotations
@@ -18,11 +22,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "worker" / "src"))
 
-import keyring  # noqa: E402
-from fiduciaire_worker import accounting_schema, bexio_client, db, vendor_account_history  # noqa: E402
-
-KEYRING_SERVICE = "fiduciaire"
-KEYRING_USERNAME_DEFAULT = "bexio-pat-pilote-dev"
+from fiduciaire_worker import (  # noqa: E402
+    accounting_schema,
+    bexio_client,
+    db,
+    secrets,
+    vendor_account_history,
+)
 
 
 def main() -> int:
@@ -35,7 +41,7 @@ def main() -> int:
     )
     p.add_argument(
         "--keyring-username",
-        default=KEYRING_USERNAME_DEFAULT,
+        default=secrets.BEXIO_PAT_KEYRING_USER_DEFAULT,
         help="Nom d'usager Keychain (défaut: bexio-pat-pilote-dev)",
     )
     p.add_argument(
@@ -46,14 +52,10 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    pat = keyring.get_password(KEYRING_SERVICE, args.keyring_username)
-    if not pat:
-        print(
-            f"ERREUR: PAT introuvable dans le Keychain ({KEYRING_SERVICE}/{args.keyring_username}).\n"
-            f"Pour l'ajouter : python -c \"import keyring; "
-            f"keyring.set_password('{KEYRING_SERVICE}', '{args.keyring_username}', '<PAT>')\"",
-            file=sys.stderr,
-        )
+    try:
+        pat = secrets.get_bexio_pat(keyring_user=args.keyring_username)
+    except RuntimeError as e:
+        print(f"ERREUR: {e}", file=sys.stderr)
         return 2
 
     db_path = Path(args.db)

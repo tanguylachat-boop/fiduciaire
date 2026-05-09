@@ -22,7 +22,9 @@ from typing import Any
 
 import httpx
 
-DEFAULT_BASE_URL = "https://api.bexio.com/2.0"
+DEFAULT_BASE_URL = "https://api.bexio.com"
+# Bexio mixe v2.0 (contacts, accounts) et v3.0 (accounting/manual_entries).
+# Réf : https://docs.bexio.com/openapi/auth/ (API explorer).
 
 _log = logging.getLogger("fiduciaire.bexio")
 
@@ -99,7 +101,7 @@ class BexioReadOnlyClient:
     # --- Fetchers (read-only) -------------------------------------------------
 
     def fetch_account_plan(self) -> list[BexioAccount]:
-        r = self._http.get("/accounts", params={"limit": 2000})
+        r = self._http.get("/2.0/accounts", params={"limit": 2000})
         r.raise_for_status()
         return [
             BexioAccount(
@@ -113,7 +115,7 @@ class BexioReadOnlyClient:
         ]
 
     def fetch_contacts(self, limit: int = 1000) -> list[BexioContact]:
-        r = self._http.get("/contact", params={"limit": limit})
+        r = self._http.get("/2.0/contact", params={"limit": limit})
         r.raise_for_status()
         return [
             BexioContact(
@@ -126,8 +128,9 @@ class BexioReadOnlyClient:
         ]
 
     def fetch_recent_manual_entries(self, limit: int = 100) -> list[BexioEntry]:
+        # API v3.0 : /3.0/accounting/manual_entries (les versions précédentes ont 404).
         r = self._http.get(
-            "/accounting/manual_entries",
+            "/3.0/accounting/manual_entries",
             params={"limit": limit, "order_by": "date_desc"},
         )
         r.raise_for_status()
