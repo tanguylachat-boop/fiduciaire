@@ -43,6 +43,7 @@ data/worker.log
 !data/clients/.gitkeep
 !data/samples/.gitkeep
 !data/samples/labels.csv
+!data/samples/entry_labels.csv
 
 # Config locale (par cabinet)
 config.yaml

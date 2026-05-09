@@ -1,0 +1,51 @@
+filename,debit_account,credit_account,vat_code,description,skip_bench,reason_skip
+01_swisscom_facture_qrbill.pdf,6510,2000,TN_NORM,Swisscom abonnement Internet+telephone,,
+02_migros_facture_simple.pdf,6500,2000,TN_NORM,Migros economat fournitures bureau,,
+03_swisspost_rechnung_qrbill_de.pdf,6500,2000,TN_NORM,SwissPost frais postaux,,
+04_note_frais_restaurant.pdf,6500,1000,TN_NORM,Note de frais restaurant representation,,
+05_releve_bancaire_ubs.pdf,,,,,true,relevé bancaire = pas une écriture simple
+06_facture_freelance_qrbill.pdf,6900,2000,TN_NORM,Honoraires freelance designer,,
+07_avis_taxation_canton.pdf,6900,2200,EXO,Taxation cantonale impôt,,
+08_sunrise_facture_qrbill.pdf,6510,2000,TN_NORM,Sunrise mobile et fixe,,
+09_romande_energie_facture.pdf,6000,2000,TN_NORM,Electricite Romande Energie T1,,
+10_helsana_facture_assurance.pdf,5700,2000,EXO,Helsana assurance maladie collective,,
+11_postfinance_releve.pdf,,,,,true,relevé bancaire
+12_decompte_tva_t1.pdf,,,,,true,décompte TVA = écritures multiples
+13_quittance_cafe_simple.pdf,6500,1000,TN_NORM,Cafe representation,,
+14_contrat_bail_commercial.pdf,,,,,true,contrat = pas écriture (loyer mensuel le sera)
+15_avenant_mandat_honoraires.pdf,,,,,true,avenant juridique
+16_lieferant_rechnung_de.pdf,6700,2000,TN_NORM,Materiel imprimante service IT,,
+17_recu_photo_floue.pdf,,,,,true,cas limite OCR
+18_coop_facture.pdf,6500,1000,TN_RED,Coop Pronto economat alimentation,,
+19_avs_facture_cotisations.pdf,5700,2270,EXO,AVS cotisations T2 employeur,,
+20_recu_manuscrit_artisan.pdf,6100,2000,TN_NORM,Reparation artisan,,
+21_ubs_releve_t1.pdf,,,,,true,relevé bancaire
+22_postfinance_releve_avril.pdf,,,,,true,relevé bancaire
+23_bcv_releve_mars.pdf,,,,,true,relevé bancaire
+24_raiffeisen_releve.pdf,,,,,true,relevé bancaire
+25_credit_suisse_releve.pdf,,,,,true,relevé bancaire
+26_zkb_releve.pdf,,,,,true,relevé bancaire
+27_swisspost_qr.pdf,6500,2000,TN_NORM,SwissPost frais postaux QR,,
+28_cff_facture_qr.pdf,6500,2000,TN_NORM,CFF business travel,,
+29_groupemutuel_qr.pdf,5700,2000,EXO,Groupe Mutuel LAA assurance accident,,
+30_salt_facture_qr.pdf,6510,2000,TN_NORM,Salt mobile,,
+31_iwb_basel_qr.pdf,6000,2000,TN_NORM,IWB Basel energie locaux,,
+32_office_world_qr.pdf,6500,2000,TN_NORM,Office World fournitures bureau,,
+33_axa_assurance_qr.pdf,6400,2000,EXO,AXA assurance RC commerce,,
+34_localnet_qr.pdf,6510,2000,TN_NORM,Localnet internet pro,,
+35_afc_decompte_tva_t1.pdf,,,,,true,décompte TVA AFC
+36_avs_cotisations_t2.pdf,5700,2270,EXO,AVS cotisations T2,,
+37_taxation_communale.pdf,6900,2200,EXO,Taxation communale,,
+38_estv_mwst_de.pdf,,,,,true,décompte MWST ESTV
+39_ofas_contribution.pdf,5700,2270,EXO,OFAS decision contribution,,
+40_bail_commercial_v2.pdf,,,,,true,contrat bail
+41_mandat_fiduciaire.pdf,6900,2000,TN_NORM,Mandat fiduciaire honoraires,,
+42_contrat_prestation_it.pdf,6700,2000,TN_NORM,LX Studio prestation IT forfait,,
+43_avenant_loyer.pdf,,,,,true,avenant contrat
+44_recu_taxi_flou.pdf,6300,1000,TN_NORM,Taxi Phone Geneve frais deplacement,,
+45_recu_manuscrit_2.pdf,6500,1000,TN_NORM,Restaurant La Coupole representation,,
+46_quittance_parking.pdf,6300,1000,TN_NORM,Parking Cornavin,,
+47_facture_hotel.pdf,6500,2000,TN_HEB,Hotel Beau-Rivage Lausanne nuitee,,
+48_ticket_coop_pronto.pdf,6500,1000,TN_RED,Coop Pronto economat alimentation,,
+49_essence_socar.pdf,6300,1000,TN_NORM,SOCAR carburant vehicule,,
+50_courrier_relance.pdf,,,,,true,courrier sans facture associee

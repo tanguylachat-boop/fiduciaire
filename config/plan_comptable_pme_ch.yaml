@@ -1,0 +1,192 @@
+# Plan comptable PME suisse standard (fallback)
+# Source : KMU-Kontenrahmen / Plan comptable PME, normes Swiss GAAP RPC.
+# Utilisé UNIQUEMENT si le pull Bexio du cabinet échoue ou si le cabinet n'a pas de logiciel comptable encore configuré.
+# Dans tous les autres cas : prendre le plan comptable réel du cabinet via bexio_client.py.
+
+version: "2026-05"
+source: "KMU-Kontenrahmen Käfer, plan PME Swiss GAAP standard"
+
+# Format : code → {label_fr, label_de, classe, default_for_keywords}
+# default_for_keywords : mots-clés (lower-case) qui pointent vers ce compte si aucun match historique vendor_account_history.
+accounts:
+
+  # CLASSE 1 — ACTIFS
+  "1000":
+    label_fr: "Caisse"
+    label_de: "Kasse"
+    classe: actif_circulant
+    default_for_keywords: ["caisse", "espèces", "cash"]
+
+  "1020":
+    label_fr: "Compte courant bancaire"
+    label_de: "Bank Kontokorrent"
+    classe: actif_circulant
+    default_for_keywords: ["banque", "compte courant", "ubs", "cs", "postfinance", "raiffeisen", "bcj", "bcv", "bcge"]
+
+  "1100":
+    label_fr: "Créances clients"
+    label_de: "Forderungen aus Lieferungen und Leistungen"
+    classe: actif_circulant
+    default_for_keywords: ["créance client", "facture client", "forderung"]
+
+  "1200":
+    label_fr: "Stocks de marchandises"
+    label_de: "Warenvorräte"
+    classe: actif_circulant
+    default_for_keywords: ["stock", "marchandise", "warenvorrat", "inventaire"]
+
+  "1500":
+    label_fr: "Mobilier et équipement"
+    label_de: "Mobiliar und Einrichtungen"
+    classe: actif_immobilise
+    default_for_keywords: ["mobilier", "meuble", "équipement", "mobiliar"]
+
+  "1520":
+    label_fr: "Matériel informatique"
+    label_de: "EDV-Anlagen"
+    classe: actif_immobilise
+    default_for_keywords: ["ordinateur", "laptop", "macbook", "imac", "ipad", "informatique", "edv"]
+
+  "1530":
+    label_fr: "Logiciels"
+    label_de: "Software"
+    classe: actif_immobilise
+    default_for_keywords: ["licence logiciel", "software", "abonnement saas long-terme"]
+
+  # CLASSE 2 — PASSIFS
+  "2000":
+    label_fr: "Dettes fournisseurs"
+    label_de: "Verbindlichkeiten aus Lieferungen und Leistungen"
+    classe: passif_court_terme
+    default_for_keywords: ["fournisseur", "dette fournisseur", "verbindlichkeit"]
+
+  "2200":
+    label_fr: "TVA due"
+    label_de: "Mehrwertsteuer geschuldet"
+    classe: passif_court_terme
+    default_for_keywords: ["tva due", "mwst geschuldet"]
+
+  "2201":
+    label_fr: "TVA récupérable (impôt préalable)"
+    label_de: "Vorsteuer"
+    classe: passif_court_terme
+    default_for_keywords: ["tva récupérable", "impôt préalable", "vorsteuer"]
+
+  "2270":
+    label_fr: "Charges sociales à payer (AVS/AI/AC/APG/LAA/LPP)"
+    label_de: "Sozialversicherungen zu bezahlen"
+    classe: passif_court_terme
+    default_for_keywords: ["avs", "ai", "ac", "apg", "laa", "lpp", "ahv", "iv", "alv", "ekas", "suva", "caisse compensation", "ausgleichskasse"]
+
+  # CLASSE 3 — PRODUITS
+  "3000":
+    label_fr: "Ventes de marchandises"
+    label_de: "Warenertrag"
+    classe: produit_exploitation
+    default_for_keywords: ["vente marchandise", "warenertrag"]
+
+  "3200":
+    label_fr: "Ventes de prestations de services"
+    label_de: "Dienstleistungsertrag"
+    classe: produit_exploitation
+    default_for_keywords: ["prestation", "service", "honoraire", "dienstleistung", "honorar"]
+
+  # CLASSE 4 — CHARGES MARCHANDISES
+  "4000":
+    label_fr: "Achats de marchandises"
+    label_de: "Materialaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["achat marchandise", "matériel", "material"]
+
+  "4400":
+    label_fr: "Frais marketing et publicité"
+    label_de: "Werbeaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["publicité", "marketing", "google ads", "meta ads", "facebook ads", "linkedin ads", "werbung"]
+
+  # CLASSE 5 — CHARGES PERSONNEL
+  "5000":
+    label_fr: "Salaires bruts"
+    label_de: "Bruttolöhne"
+    classe: charge_personnel
+    default_for_keywords: ["salaire brut", "bruttolohn"]
+
+  "5700":
+    label_fr: "Charges sociales employeur"
+    label_de: "Sozialversicherungsaufwand"
+    classe: charge_personnel
+    default_for_keywords: ["charge sociale employeur", "sozialversicherung"]
+
+  "5800":
+    label_fr: "Frais de formation"
+    label_de: "Aus- und Weiterbildung"
+    classe: charge_personnel
+    default_for_keywords: ["formation", "weiterbildung"]
+
+  # CLASSE 6 — AUTRES CHARGES
+  "6000":
+    label_fr: "Charges de locaux"
+    label_de: "Raumaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["loyer", "miete", "charges immeuble", "nebenkosten"]
+
+  "6100":
+    label_fr: "Entretien, réparations, maintenance"
+    label_de: "Unterhalt, Reparaturen"
+    classe: charge_exploitation
+    default_for_keywords: ["entretien", "réparation", "maintenance", "unterhalt", "reparatur"]
+
+  "6300":
+    label_fr: "Frais véhicules"
+    label_de: "Fahrzeugaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["essence", "carburant", "diesel", "garage", "réparation auto", "leasing voiture", "fahrzeug", "benzin"]
+
+  "6400":
+    label_fr: "Assurances choses"
+    label_de: "Sachversicherungen"
+    classe: charge_exploitation
+    default_for_keywords: ["assurance bâtiment", "assurance véhicule", "rc entreprise", "sachversicherung"]
+
+  "6500":
+    label_fr: "Charges administratives"
+    label_de: "Verwaltungsaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["administration", "fournitures bureau", "papeterie", "verwaltung", "büromaterial"]
+
+  "6510":
+    label_fr: "Téléphone et Internet"
+    label_de: "Telefon und Internet"
+    classe: charge_exploitation
+    default_for_keywords: ["téléphone", "internet", "swisscom", "salt", "sunrise", "wingo", "telefon"]
+
+  "6700":
+    label_fr: "Frais informatique courants"
+    label_de: "EDV-Aufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["abonnement saas", "google workspace", "microsoft 365", "office 365", "dropbox", "zoom"]
+
+  "6800":
+    label_fr: "Amortissements"
+    label_de: "Abschreibungen"
+    classe: charge_exploitation
+    default_for_keywords: ["amortissement", "abschreibung"]
+
+  "6900":
+    label_fr: "Honoraires conseil (avocat, fiduciaire, notaire)"
+    label_de: "Beratungsaufwand"
+    classe: charge_exploitation
+    default_for_keywords: ["avocat", "fiduciaire", "notaire", "conseil juridique", "beratung", "rechtsanwalt", "treuhänder"]
+
+  # CLASSE 7 — RÉSULTAT FINANCIER
+  "7000":
+    label_fr: "Produits financiers"
+    label_de: "Finanzertrag"
+    classe: resultat_financier
+    default_for_keywords: ["intérêt reçu", "dividende", "finanzertrag"]
+
+  "7100":
+    label_fr: "Charges financières (intérêts, frais bancaires)"
+    label_de: "Finanzaufwand"
+    classe: resultat_financier
+    default_for_keywords: ["intérêt débiteur", "frais bancaire", "commission bancaire", "finanzaufwand", "bankgebühr"]

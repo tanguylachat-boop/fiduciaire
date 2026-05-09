@@ -1,0 +1,121 @@
+# Codes TVA suisses 2024+ (taux en vigueur depuis 1er janvier 2024 suite votation 2022).
+# Utilisés par worker/src/fiduciaire_worker/vat_code_detector.py.
+
+version: "2024-01-01"
+source: "AFC / ESTV — Loi fédérale sur la TVA, taux en vigueur 2024+"
+
+codes:
+
+  TN_NORM:
+    label_fr: "Taux normal"
+    label_de: "Normalsatz"
+    rate: 8.1
+    typical_for: ["produits manufacturés", "services pro", "matériel", "informatique", "transport non public"]
+    keywords:
+      - "tva 8.1"
+      - "tva 8,1"
+      - "mwst 8.1"
+      - "mwst 8,1"
+      - "tva 8.0"
+      - "vat 8"
+    note: "Taux par défaut. Si rien d'autre détecté, propose TN_NORM."
+
+  TN_RED:
+    label_fr: "Taux réduit"
+    label_de: "Reduzierter Satz"
+    rate: 2.6
+    typical_for: ["alimentation hors restauration", "boissons non alcoolisées hors restau", "livres", "presse", "médicaments"]
+    keywords:
+      - "tva 2.6"
+      - "tva 2,6"
+      - "mwst 2.6"
+      - "mwst 2,6"
+      - "alimentation"
+      - "lebensmittel"
+      - "livres"
+      - "bücher"
+      - "presse"
+      - "zeitung"
+      - "médicament"
+      - "medikament"
+    note: "Attention : restauration sur place = TN_NORM. À-emporter / livraison alimentation = TN_RED. Heuristique : présence de 'restaurant' / 'café' / 'bar' → TN_NORM."
+
+  TN_HEB:
+    label_fr: "Taux hébergement"
+    label_de: "Beherbergungssatz"
+    rate: 3.8
+    typical_for: ["hôtel", "B&B", "auberge", "appartement de vacances avec petit-déjeuner inclus"]
+    keywords:
+      - "tva 3.8"
+      - "tva 3,8"
+      - "mwst 3.8"
+      - "mwst 3,8"
+      - "hôtel"
+      - "hotel"
+      - "auberge"
+      - "b&b"
+      - "chambre d'hôte"
+      - "nuitée"
+      - "übernachtung"
+    note: "Uniquement hébergement avec nuitée. Restauration de l'hôtel reste au taux TN_NORM."
+
+  EXO:
+    label_fr: "Exonéré"
+    label_de: "Steuerausgenommen"
+    rate: 0.0
+    typical_for: ["soins médicaux", "enseignement", "prestations sociales", "location longue durée immeubles", "prestations financières (intérêts, dividendes)", "assurances"]
+    keywords:
+      - "exonéré"
+      - "steuerausgenommen"
+      - "soin médical"
+      - "consultation médicale"
+      - "enseignement"
+      - "intérêts"
+      - "loyer immeuble"
+      - "miete liegenschaft"
+      - "prime assurance"
+    note: "Pas de TVA collectée, pas de TVA récupérable. Différent de EXP (export)."
+
+  EXP:
+    label_fr: "Export (zero-rated)"
+    label_de: "Export"
+    rate: 0.0
+    typical_for: ["livraison hors Suisse", "exportation marchandise", "prestations services consommées à l'étranger"]
+    keywords:
+      - "export"
+      - "ausfuhr"
+      - "livraison hors suisse"
+      - "lieferung ins ausland"
+      - "exempté tva à l'export"
+    note: "Pas de TVA, droit à récupération de la TVA en amont. À distinguer d'EXO."
+
+  ACQ:
+    label_fr: "Acquisition prestations étrangères (auto-liquidation)"
+    label_de: "Bezugsteuer"
+    rate: 8.1
+    typical_for: ["services achetés à fournisseur étranger sans représentation TVA suisse", "abonnements SaaS US (Google, AWS, Microsoft) sans TVA CH"]
+    keywords:
+      - "auto-liquidation"
+      - "bezugsteuer"
+      - "reverse charge"
+      - "fournisseur étranger sans tva ch"
+      - "google ireland"
+      - "amazon web services"
+      - "microsoft ireland"
+      - "stripe ireland"
+    note: "Le destinataire suisse auto-liquide la TVA. Compte 2200 (TVA due) ET 2201 (TVA récupérable). Souvent neutre en cash mais doit apparaître au décompte."
+
+# Mapping codes vers logiciels comptables tiers (à compléter Sprint 2)
+# Sprint 0a : ces codes sont les codes natifs employé IA. Le mapping vers les codes
+# spécifiques WinBIZ / Crésus / Abacus arrive en Sprint 2 dans la section connectors.
+mapping_to_external:
+  bexio:
+    TN_NORM: "VST"        # à confirmer pull plan comptable cabinet
+    TN_RED: "VSTRED"
+    TN_HEB: "VSTHEB"
+    EXO: "EXEMPT"
+    EXP: "EXP"
+    ACQ: "ACQ"
+  # winbiz: à compléter Sprint 2
+  # cresus: à compléter Sprint 2
+  # abacus: à compléter Sprint 2
