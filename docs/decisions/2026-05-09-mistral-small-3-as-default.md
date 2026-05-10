@@ -70,7 +70,48 @@ Dans ces cas, on bascule sur Llama 3.3 70B comme défaut, et on documente le sur
 
 ## Suivi
 
-- [ ] Bench exécuté sur RunPod ou Mac Studio prêté
-- [ ] Seuils validés (≥75% / ≥80%)
+- [x] Bench exécuté sur RunPod (2026-05-10, A100 80 GB)
+- [ ] Seuils validés (≥75% / ≥80%) — **bloqué par bug ingestion, voir ci-dessous**
 - [ ] `config.yaml` cabinet pilote mis à jour avec `default_model`
 - [ ] Notif client pilote du modèle retenu pour le déploiement
+
+## Mise à jour 2026-05-10 — bench RunPod inconclusif
+
+**Statut :** validation reportée à la session 3 Option Z après livraison
+de `worker/scripts/ingest_local_corpus.py`.
+
+**Diagnostic :** le bench du 2026-05-10 (RunPod A100 80 GB, ~30 min,
+$2 USD) a tourné mais retourné des résultats inutilisables :
+- Llama 70B : `debit_account=5000` partout (pattern hallucination
+  fallback).
+- Mistral Small 3 : `SKIP` partout (refus de répondre).
+
+Cause racine : `worker/scripts/seed_db_from_bench.py` insère les
+documents dans `data/fiduciaire.sqlite` à partir d'un CSV bench, sans
+passer par le pipeline OCR/classification. Conséquences :
+- `documents.ocr_text = NULL`
+- `documents.classification_json` ne contient pas le champ
+  `fournisseur` (clé requise par `entry_proposer.py:78`)
+- → entry_proposer reçoit du vide, l'LLM hallucine ou skip.
+
+**Action corrective Sprint 1 (session 2 Option Z, 2026-05-10) :**
+livraison de `worker/scripts/ingest_local_corpus.py` qui passe les
+50 docs `data/samples/` via le pipeline complet `prepare → qrbill →
+ocr → classify → route|review`. Après cet ingest réel, la DB contient
+des documents valides (ocr_text non NULL + champ `fournisseur`).
+
+**Décision temporaire (non gravée) :** Mistral Small 3 reste la cible
+par défaut **par contrainte hardware** (cabinet pilote-01 sur Mac Mini
+32 GB → Llama 70B impossible). Validation définitive du seuil 75%/80%
+**bloquée jusqu'au re-bench** post-ingest réel.
+
+**Prochaine étape :** session 3 Option Z, séquence côté Tanguy :
+1. `python worker/scripts/ingest_local_corpus.py --dir data/samples
+   --client-id pilote-jura-01 --reset-db`
+2. SCP `data/fiduciaire.sqlite` + `data/archive/` sur pod RunPod
+3. Re-lancer `python worker/scripts/entry_bench.py --mistral-compare`
+4. Si Mistral ≥75% / ≥80% → cocher la case "Seuils validés" ci-dessus
+5. Si Mistral < seuils → ouvrir
+   `docs/decisions/2026-05-XX-llama-70b-required.md` + revoir hardware
+   (le cabinet pilote-01 nécessitera un upgrade Mac Studio 64 GB ou
+   pivot architecture cloud-friendly).
