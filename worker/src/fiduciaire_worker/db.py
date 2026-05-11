@@ -45,7 +45,73 @@ CREATE TABLE IF NOT EXISTS actions (
 
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_actions_document ON actions(document_id);
+
+-- Sprint 1 §3.1 — IMAP fetch metadata (cf docs/specs/imap-fetch.md)
+
+CREATE TABLE IF NOT EXISTS email_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cabinet_id TEXT NOT NULL,
+  folder TEXT NOT NULL,
+  uid INTEGER NOT NULL,
+  uidvalidity INTEGER NOT NULL,
+  message_id TEXT NOT NULL,
+  date_received TEXT,
+  from_addr TEXT,
+  to_addr TEXT,
+  subject TEXT,
+  body_excerpt TEXT,
+  encryption_status TEXT NOT NULL DEFAULT 'plain',
+  size_bytes INTEGER,
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (cabinet_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_messages_cabinet_uid
+  ON email_messages (cabinet_id, folder, uid);
+
+CREATE TABLE IF NOT EXISTS email_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_id INTEGER NOT NULL REFERENCES email_messages(id),
+  filename TEXT,
+  content_type TEXT,
+  size_bytes INTEGER,
+  content_sha256 TEXT NOT NULL,
+  status TEXT NOT NULL,
+  document_id INTEGER REFERENCES documents(id),
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (email_id, content_sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_attachments_email
+  ON email_attachments (email_id);
+CREATE INDEX IF NOT EXISTS idx_email_attachments_doc
+  ON email_attachments (document_id);
+
+CREATE TABLE IF NOT EXISTS email_fetch_state (
+  cabinet_id TEXT NOT NULL,
+  folder TEXT NOT NULL,
+  uidvalidity INTEGER,
+  last_uid_seen INTEGER NOT NULL DEFAULT 0,
+  last_fetch_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_fetch_status TEXT NOT NULL DEFAULT 'ok',
+  PRIMARY KEY (cabinet_id, folder)
+);
 """
+
+# Constantes statuts email_attachments
+EMAIL_ATT_STATUS_PENDING = "pending"
+EMAIL_ATT_STATUS_PROCESSED = "processed"
+EMAIL_ATT_STATUS_FAILED = "failed"
+EMAIL_ATT_STATUS_UNSUPPORTED = "unsupported"
+EMAIL_ATT_STATUS_ENCRYPTED_SKIPPED = "encrypted_skipped"
+EMAIL_ATT_STATUS_OVERSIZED = "oversized"
+EMAIL_ATT_STATUS_EMPTY = "empty"
+
+# Statuts chiffrement email
+EMAIL_ENC_PLAIN = "plain"
+EMAIL_ENC_PGP = "pgp"
+EMAIL_ENC_SMIME = "smime"
 
 STATUS_INGESTED = "ingested"
 STATUS_CLASSIFIED = "classified"
