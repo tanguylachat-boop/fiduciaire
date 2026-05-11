@@ -16,7 +16,7 @@ Le bench V2 cloud GPU runpod (commit `7428e24`, 5 mai) avait déjà testé Qwen 
 | Modèle | Taille Q4 | RAM nécessaire | Position |
 |---|---|---|---|
 | `llama3.3:70b-instruct-q4_K_M` | ~42 GB | tient en 64 GB Mac Mini | référence prod actuelle |
-| `mistral-small3:24b-instruct-q4_K_M` | ~14 GB | tient en 16 GB MBP | challenger français |
+| `mistral-small:24b-instruct-2501-q4_K_M` | ~14 GB | tient en 16 GB MBP | challenger français |
 
 Mêmes prompts, même corpus, mesures séparées :
 
@@ -42,7 +42,7 @@ Réutiliser `worker/scripts/bench.py` (déjà existant, cf bench V2 cloud GPU).
 1. Pull les modèles sur Mac Mini cabinet (ou cloud GPU runpod si Mac Mini pas dispo le 11 mai matin) :
    ```
    ollama pull llama3.3:70b-instruct-q4_K_M
-   ollama pull mistral-small3:24b-instruct-q4_K_M
+   ollama pull mistral-small:24b-instruct-2501-q4_K_M
    ```
 2. Charger le corpus 50 docs anonymisés Jura dans `data/samples/jura-pilote/`.
 3. Exécuter le bench pour chaque modèle avec le **même prompt** `worker/prompts/entry_proposer_v1.txt` (à créer).

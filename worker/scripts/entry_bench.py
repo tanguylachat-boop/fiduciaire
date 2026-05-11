@@ -187,7 +187,7 @@ def main():
     summaries: list[dict] = []
     models_to_test = [args.model]
     if args.mistral_compare:
-        models_to_test.append("mistral-small3:24b-instruct-q4_K_M")
+        models_to_test.append("mistral-small:24b-instruct-2501-q4_K_M")
 
     for model in models_to_test:
         print(f"\n=== Bench {model} ===")

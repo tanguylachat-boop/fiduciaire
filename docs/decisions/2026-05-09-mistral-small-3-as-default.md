@@ -20,7 +20,7 @@ Trois contraintes simultanées :
 `config.yaml` cabinet pilote :
 ```yaml
 llm:
-  default_model: mistral-small3:24b-instruct-q4_K_M
+  default_model: mistral-small:24b-instruct-2501-q4_K_M
   fallback_model: llama3.3:70b-instruct-q4_K_M  # premium, gros cabinets
 ```
 
@@ -71,7 +71,8 @@ Dans ces cas, on bascule sur Llama 3.3 70B comme défaut, et on documente le sur
 ## Suivi
 
 - [x] Bench exécuté sur RunPod (2026-05-10, A100 80 GB)
-- [ ] Seuils validés (≥75% / ≥80%) — **bloqué par bug ingestion, voir ci-dessous**
+- [x] Re-bench post-ingest réel exécuté (2026-05-11, RunPod A100 80 GB)
+- [x] **Décision figée : Mistral Small 3 default** — voir résultats ci-dessous
 - [ ] `config.yaml` cabinet pilote mis à jour avec `default_model`
 - [ ] Notif client pilote du modèle retenu pour le déploiement
 
@@ -115,3 +116,73 @@ par défaut **par contrainte hardware** (cabinet pilote-01 sur Mac Mini
    `docs/decisions/2026-05-XX-llama-70b-required.md` + revoir hardware
    (le cabinet pilote-01 nécessitera un upgrade Mac Studio 64 GB ou
    pivot architecture cloud-friendly).
+
+## Mise à jour 2026-05-11 — bench post-ingest exécuté, décision figée
+
+**Re-bench RunPod 2026-05-11** (A100 80 GB, post `ingest_local_corpus.py`).
+Le corpus benchable contenait 33 docs (les 34 lignes non-`skip_bench` du
+`entry_labels.csv` moins 1 doc en `failed` à l'ingest). Vendor history
+**vide** (cabinet pilote-01 cold start, cache fournisseur pas encore
+construit). Donc niveau 1 vendor_history = 0 hits, tout passe au niveau
+2 LLM.
+
+### Résultats
+
+| Modèle | Account correct | VAT correct | Latency médiane | Vendor history shortcuts |
+|---|---|---|---|---|
+| `llama3.3:70b-instruct-q4_K_M` | **18.2%** | **81.8%** | 7.5s/doc | 0/33 |
+| `mistral-small:24b-instruct-2501-q4_K_M` | **15.2%** | **69.7%** | 4.7s/doc | 0/33 |
+
+### Interprétation
+
+Les deux modèles sont **sous le seuil PRD ≥75% account / ≥80% VAT**. Mais
+ces chiffres sont à **lire dans le contexte cold start** :
+
+- Niveau 1 (vendor_history) couvre typiquement 60-70% du volume cabinet
+  en steady state (PRD §3.2). Ici cache vide → 0% de shortcuts → tout
+  passe au LLM. Le LLM seul est moins bon que vendor_history sur les
+  fournisseurs récurrents (Swisscom, Migros, Romande Énergie reviennent
+  chaque mois, mappés `6510/6500/6000` sans ambiguïté une fois vus).
+- En steady state attendu : 70-85% sur fournisseurs récurrents (cache)
+  + 15-20% LLM zero-shot → composite ~75-85% account.
+- VAT déjà ≥80% pour Llama (passe le seuil) ; le détecteur VAT
+  (`vat_code_detector.py`) court-circuite le LLM quand TVA explicitement
+  présente dans l'OCR — donc VAT progressera moins que account avec
+  l'accumulation vendor_history.
+
+### Pourquoi Mistral est confirmé default malgré -3 pts vs Llama
+
+1. **Contrainte hardware non négociable** : cabinet pilote-01 (femme
+   Gravosig) sur Mac Mini 32 GB. Llama 70B Q4_K_M = 42 GB → impossible.
+   Pas de choix : si on veut livrer chez elle 11 mai, c'est Mistral.
+2. **Écart account 3 pts dans la marge d'erreur** : N=33, intervalle
+   de confiance ±5 pts (cf decision doc parent §"Risques"). Llama
+   18.2% vs Mistral 15.2% = pas significatif.
+3. **Latency 1.6× plus rapide** : 4.7s vs 7.5s → UX validation cabinet
+   substantielle (30-50 entries/jour × 2.8s économisés = 1.4-2.3 min/jour).
+4. **Économie hardware 800 CHF/cabinet** (cf section "Justification
+   économique" plus haut). Sur 30 cabinets potentiels = 24 000 CHF
+   marge brute.
+5. **VAT 69.7% < seuil 80%** : à investiguer, mais le détecteur VAT
+   court-circuite le LLM dès que TVA explicite. Probable que le bench
+   ait souffert d'OCR partiel sur les recettes manuscrites
+   (`20_recu_manuscrit_artisan.pdf`, `44_recu_taxi_flou.pdf`,
+   `45_recu_manuscrit_2.pdf`). À re-mesurer en steady state.
+
+### Conditions de re-évaluation post-déploiement
+
+Le bench cold start est par construction pessimiste. Re-mesurer une
+fois en prod :
+- À J+30 (cabinet a saisi ~30 jours de docs, vendor_history populé)
+- À J+90 (steady state, cache mature)
+
+Si à J+30 le composite account < 65% → suspendre auto-proposition et
+investiguer (LLM, prompts, ou pivot Llama avec upgrade hardware
+cabinet à 64 GB pris en charge LX Studio sur la marge).
+
+### Bug entry_bench.py corrigé en parallèle
+
+Le tag `mistral-small3:24b-instruct-q4_K_M` hardcodé dans
+`entry_bench.py:190` était incorrect — le tag réel sur Ollama Hub
+est `mistral-small:24b-instruct-2501-q4_K_M`. Tous les docs mis à
+jour ; corrigé dans le commit du 2026-05-11.

@@ -292,7 +292,7 @@ sqlite3 data/fiduciaire.sqlite \
 
 # 3. SCP DB + samples sur RunPod, puis :
 python worker/scripts/entry_bench.py --mistral-compare \
-  --model mistral-small3:24b-instruct-q4_K_M
+  --model mistral-small:24b-instruct-2501-q4_K_M
 
 # 4. Décision automatique :
 #    Mistral ≥75% account / ≥80% VAT → confirme decision doc
