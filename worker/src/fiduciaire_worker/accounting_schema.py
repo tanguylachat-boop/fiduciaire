@@ -92,6 +92,25 @@ CREATE TABLE IF NOT EXISTS entry_state_changes (
 
 CREATE INDEX IF NOT EXISTS idx_state_changes_entry
   ON entry_state_changes(entry_id);
+
+-- Sprint 1 §3.2 — Bexio push log (cf docs/specs/bexio-push.md)
+
+CREATE TABLE IF NOT EXISTS bexio_push_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    entry_id INTEGER NOT NULL REFERENCES accounting_entries(id),
+    attempt INTEGER NOT NULL DEFAULT 1,
+    http_status INTEGER,
+    bexio_id TEXT,
+    ok INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    response_excerpt TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_bexio_push_log_client_entry
+  ON bexio_push_log(client_id, entry_id);
 """
 
 ENTRY_STATE_PROPOSED = "proposed"
@@ -99,5 +118,20 @@ ENTRY_STATE_VALIDATED = "validated"
 ENTRY_STATE_REJECTED = "rejected"
 
 
+def _add_column_if_missing(
+    conn: sqlite3.Connection, table: str, column: str, definition: str,
+) -> bool:
+    """ALTER TABLE ADD COLUMN idempotent. Retourne True si ajout effectué."""
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    cols = {row[1] for row in rows}
+    if column in cols:
+        return False
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    return True
+
+
 def init_accounting_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(ACCOUNTING_SCHEMA)
+    # Migrations idempotentes : colonnes ajoutées après la baseline initiale.
+    _add_column_if_missing(conn, "accounting_entries", "bexio_id", "TEXT")
+    _add_column_if_missing(conn, "accounting_entries", "bexio_pushed_at", "TEXT")

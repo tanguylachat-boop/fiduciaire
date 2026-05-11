@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template launchd pour le polling IMAP fiduciaire — Mac Mini cabinet.
+
+  Variables à substituer (cf deploy/install-launchd.sh) :
+    @@CLIENT_ID@@        cabinet ID (ex. pilote-jura-01)
+    @@REPO_ROOT@@        chemin absolu du repo (ex. /Users/cabinet/fiduciaire)
+    @@VENV_PYTHON@@      python du venv worker (ex. /Users/.../worker/.venv/bin/python)
+    @@USER@@             user macOS qui run (ex. cabinet)
+
+  Installation :
+    cp deploy/imap-fetch.plist.template ~/Library/LaunchAgents/com.lxstudio.fiduciaire.imap-@@CLIENT_ID@@.plist
+    sed -i '' 's/@@CLIENT_ID@@/pilote-jura-01/g' ~/Library/LaunchAgents/com.lxstudio.fiduciaire.imap-@@CLIENT_ID@@.plist
+    ... (idem pour les autres @@VARS@@)
+    launchctl load ~/Library/LaunchAgents/com.lxstudio.fiduciaire.imap-@@CLIENT_ID@@.plist
+
+  Diagnostic :
+    launchctl list | grep fiduciaire
+    tail -f ~/Library/Logs/fiduciaire/imap-fetch-@@CLIENT_ID@@.log
+    launchctl unload ~/Library/LaunchAgents/com.lxstudio.fiduciaire.imap-@@CLIENT_ID@@.plist  (stop)
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lxstudio.fiduciaire.imap-@@CLIENT_ID@@</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>@@VENV_PYTHON@@</string>
+        <string>@@REPO_ROOT@@/worker/scripts/imap_fetch.py</string>
+        <string>--client-id</string>
+        <string>@@CLIENT_ID@@</string>
+        <string>--mark-seen</string>
+        <string>--log-level</string>
+        <string>INFO</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>@@REPO_ROOT@@</string>
+
+    <!-- Poll toutes les 5 minutes. Le lock file empêche les recouvrements. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Re-run même si exit non-zéro. Pas de retry agressif : intervalle 300s suffit. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/@@USER@@/Library/Logs/fiduciaire/imap-fetch-@@CLIENT_ID@@.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/@@USER@@/Library/Logs/fiduciaire/imap-fetch-@@CLIENT_ID@@.err</string>
+
+    <!-- N'envoie pas à pasteboard / notification center : silencieux. -->
+    <key>AbandonProcessGroup</key>
+    <false/>
+
+    <!-- Limites de ressource : OCR/LLM hors process, ce script reste léger. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+
+    <!-- Environnement : on hérite du shell utilisateur pour Keychain access.
+         Si Keychain n'est pas dispo (locked screen au boot), le script
+         retombe sur les vars IMAP_*_<CABINET> du fichier .env. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+        <key>LANG</key>
+        <string>en_US.UTF-8</string>
+    </dict>
+</dict>
+</plist>

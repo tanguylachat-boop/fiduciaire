@@ -498,7 +498,107 @@ Alternatives écartées :
 
 ---
 
-## 10. RÉFÉRENCES
+## 10. SMOKE TEST PROD (exécutable par Tanguy)
+
+À exécuter une fois en session 5 (ou plus tôt si compte mail test prêt) sur
+un serveur IMAP réel — typiquement Infomaniak avec un compte dédié de test.
+
+### Pré-requis cabinet
+
+1. Compte IMAP dédié (ex. `test-fiduciaire@infomaniak.com`) — pas la
+   boîte de production tant qu'on n'a pas un cycle complet validé.
+2. Générer un **app password** Infomaniak (Panel → Mail → Mot de passe
+   d'application). Format `xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx`.
+3. Envoyer 3-5 emails vers cette boîte avec des PJ variées :
+   - 1 PDF valide (facture sample)
+   - 1 PNG (image scannée)
+   - 1 .zip (sera marqué unsupported)
+   - 1 email sans PJ (newsletter)
+   - 1 email > 50 MB si possible (sera marqué oversized) — facultatif.
+
+### Configuration locale
+
+```bash
+# Option A — Keychain (recommandé prod)
+python -c "import keyring; \
+  keyring.set_password('fiduciaire', 'imap-pilote-jura-01-host', 'mail.infomaniak.com')"
+python -c "import keyring; \
+  keyring.set_password('fiduciaire', 'imap-pilote-jura-01-user', 'test-fiduciaire@infomaniak.com')"
+python -c "import keyring; \
+  keyring.set_password('fiduciaire', 'imap-pilote-jura-01-password', '<APP_PWD>')"
+
+# Option B — .env (dev seulement)
+cat >> .env <<EOF
+IMAP_HOST_PILOTE_JURA_01=mail.infomaniak.com
+IMAP_USER_PILOTE_JURA_01=test-fiduciaire@infomaniak.com
+IMAP_PASSWORD_PILOTE_JURA_01=<APP_PWD>
+EOF
+```
+
+### Exécution smoke test
+
+```bash
+# Étape 1 — dry-run pour vérifier auth + comptage sans toucher la DB
+cd ~/fiduciaire
+worker/.venv/bin/python worker/scripts/imap_fetch.py \
+  --client-id pilote-jura-01 \
+  --dry-run \
+  --limit 10
+
+# Sortie attendue :
+#   IMAP fetch
+#     cabinet     : pilote-jura-01
+#     host        : mail.infomaniak.com:993
+#     user        : test-fiduciaire@infomaniak.com
+#     ...
+#   ─── IMAP FETCH SUMMARY ──────
+#   New messages     : 5
+#   Attachments      : 5
+#     → processed    : 2
+#     → unsupported  : 1
+#     → empty/oversized si applicable
+#   ...
+
+# Étape 2 — run réel, avec mark-seen (les messages disparaissent de la UNREAD list Infomaniak)
+worker/.venv/bin/python worker/scripts/imap_fetch.py \
+  --client-id pilote-jura-01 \
+  --mark-seen
+
+# Étape 3 — relance pour vérifier idempotence (0 nouveaux)
+worker/.venv/bin/python worker/scripts/imap_fetch.py \
+  --client-id pilote-jura-01
+
+# Étape 4 — installer launchd pour polling auto 5 min
+deploy/install-launchd.sh pilote-jura-01
+tail -f ~/Library/Logs/fiduciaire/imap-fetch-pilote-jura-01.log
+```
+
+### Critères de validation smoke test
+
+- [ ] Étape 1 dry-run : pas d'écriture `email_messages`, comptage cohérent
+- [ ] Étape 2 réel : N email_messages + N email_attachments avec statuses corrects
+- [ ] Étape 3 idempotence : 0 nouveau, last_uid_seen inchangé
+- [ ] Étape 4 launchd : 2 polls successifs visibles dans le log, lock file
+      créé/relâché à chaque run, jamais 2 runs simultanés
+- [ ] Logs ne contiennent **jamais** le password en clair (grep ne renvoie rien)
+
+### Rollback / cleanup
+
+```bash
+# Stop launchd
+launchctl unload ~/Library/LaunchAgents/com.lxstudio.fiduciaire.imap-pilote-jura-01.plist
+
+# Reset state (force full rescan au prochain run)
+worker/.venv/bin/python worker/scripts/imap_fetch.py \
+  --client-id pilote-jura-01 --reset-state --dry-run
+
+# Effacer credentials Keychain
+python -c "import keyring; keyring.delete_password('fiduciaire', 'imap-pilote-jura-01-password')"
+```
+
+---
+
+## 11. RÉFÉRENCES
 
 - PRD V2 §3.10 (IMAP reporté Sprint 0a → Sprint 1)
 - Session 1 handoff §3.1 (cadrage initial)
