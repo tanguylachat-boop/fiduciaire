@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 import httpx
 
-from . import accounting_schema, plan_comptable_mapper, vat_code_detector
+from . import accounting_schema, audit_log, plan_comptable_mapper, vat_code_detector
 from . import vendor_account_history as vah
 
 VENDOR_HISTORY_CONFIDENCE_THRESHOLD = 0.8
@@ -295,4 +295,22 @@ def _persist(
         ),
     )
     entry.db_id = int(cur.lastrowid)
+    # Sprint 1 §3.6 — audit trail (silent skip si table absente)
+    try:
+        audit_log.log_audit_event(
+            conn, cabinet_id=entry.client_id,
+            entity_type="accounting_entry", entity_id=entry.db_id,
+            action=audit_log.ACTION_PROPOSED,
+            after={
+                "debit_account": entry.debit_account,
+                "credit_account": entry.credit_account,
+                "amount_chf": entry.amount_chf,
+                "vat_code": entry.vat_code,
+                "confidence_account": entry.confidence_account,
+                "confidence_vat": entry.confidence_vat,
+                "source_document_id": entry.source_document_id,
+            },
+        )
+    except sqlite3.OperationalError:
+        pass
     return entry

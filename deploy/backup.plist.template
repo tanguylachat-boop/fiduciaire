@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template launchd pour backup quotidien fiduciaire.
+
+  Variables à substituer (cf deploy/install-backup-launchd.sh) :
+    @@REPO_ROOT@@        chemin absolu du repo (ex. /Users/cabinet/fiduciaire)
+    @@VENV_PYTHON@@      python du venv worker
+    @@USER@@             user macOS qui run
+
+  Schedule : tous les jours à 03:00 du matin (hors heures bureau).
+
+  Installation :
+    deploy/install-backup-launchd.sh
+
+  Diagnostic :
+    launchctl list | grep fiduciaire.backup
+    tail -f ~/Library/Logs/fiduciaire/backup.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lxstudio.fiduciaire.backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>@@VENV_PYTHON@@</string>
+        <string>@@REPO_ROOT@@/worker/scripts/backup_now.py</string>
+        <string>--verify</string>
+        <string>--log-level</string>
+        <string>INFO</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>@@REPO_ROOT@@</string>
+
+    <!-- Tous les jours à 03:00 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/@@USER@@/Library/Logs/fiduciaire/backup.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/@@USER@@/Library/Logs/fiduciaire/backup.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+        <key>LANG</key>
+        <string>en_US.UTF-8</string>
+    </dict>
+</dict>
+</plist>

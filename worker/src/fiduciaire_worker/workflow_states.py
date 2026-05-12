@@ -19,6 +19,43 @@ from .accounting_schema import (
     ENTRY_STATE_REJECTED,
     ENTRY_STATE_VALIDATED,
 )
+from . import audit_log as _audit
+
+
+_AUDIT_ACTION_FOR_STATE = {
+    ENTRY_STATE_VALIDATED: _audit.ACTION_VALIDATED,
+    ENTRY_STATE_REJECTED: _audit.ACTION_REJECTED,
+    ENTRY_STATE_PROPOSED: _audit.ACTION_REOPENED,
+}
+
+
+def _safe_audit(
+    conn: sqlite3.Connection,
+    entry_id: int,
+    from_state: str,
+    to_state: str,
+    user_id: str | None,
+    reason: str | None,
+) -> None:
+    """Log audit event si table dispo. Silent skip sinon (back-compat)."""
+    try:
+        row = conn.execute(
+            "SELECT client_id FROM accounting_entries WHERE id=?",
+            (entry_id,),
+        ).fetchone()
+        if row is None:
+            return
+        action = _AUDIT_ACTION_FOR_STATE.get(to_state, f"state_{to_state}")
+        _audit.log_audit_event(
+            conn, cabinet_id=row["client_id"],
+            entity_type="accounting_entry", entity_id=entry_id,
+            action=action, user_id=user_id,
+            before={"state": from_state},
+            after={"state": to_state, "reason": reason},
+        )
+    except sqlite3.OperationalError:
+        # Table audit_log pas initialisée → silent skip
+        pass
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     ENTRY_STATE_PROPOSED: {
@@ -70,6 +107,7 @@ def transition(
         "(entry_id, from_state, to_state, user_id, reason) VALUES (?, ?, ?, ?, ?)",
         (entry_id, from_state, to_state, user_id, reason),
     )
+    _safe_audit(conn, entry_id, from_state, to_state, user_id, reason)
 
 
 def history(conn: sqlite3.Connection, entry_id: int) -> list[sqlite3.Row]:

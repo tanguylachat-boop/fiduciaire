@@ -47,3 +47,9 @@ data/worker.log
 
 # Config locale (par cabinet)
 config.yaml
+# Maps cabinet-spécifiques Bexio (IDs internes ne doivent jamais fuiter)
+config/account-map-*.json
+config/tax-map-*.json
+# Backups + locks runtime
+data/backups/
+data/locks/

@@ -46,6 +46,7 @@ from typing import Any
 import httpx
 
 from . import accounting_schema as acct_schema
+from . import audit_log as _audit
 
 _log = logging.getLogger("fiduciaire.bexio_push")
 
@@ -375,6 +376,18 @@ def push_validated_entries(
                     attempt_count=attempts_done,
                     http_status=response.status_code,
                 ))
+                # Sprint 1 §3.6 — audit trail (silent skip si table absente)
+                try:
+                    _audit.log_audit_event(
+                        conn, cabinet_id=cabinet_id,
+                        entity_type="accounting_entry", entity_id=entry_id,
+                        action=_audit.ACTION_PUSHED,
+                        after={"bexio_id": bexio_id_val,
+                               "http_status": response.status_code,
+                               "attempts": attempts_done},
+                    )
+                except sqlite3.OperationalError:
+                    pass
             else:
                 # Echec (4xx, 5xx épuisé, ou exception réseau)
                 http_st = response.status_code if response is not None else None
@@ -397,6 +410,16 @@ def push_validated_entries(
                     error=err_msg,
                     response_excerpt=excerpt,
                 ))
+                try:
+                    _audit.log_audit_event(
+                        conn, cabinet_id=cabinet_id,
+                        entity_type="accounting_entry", entity_id=entry_id,
+                        action=_audit.ACTION_PUSH_FAILED,
+                        after={"http_status": http_st, "attempts": attempts_done,
+                               "error": err_msg},
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
     finally:
         if owns_client and http_client is not None:
