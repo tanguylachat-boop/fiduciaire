@@ -135,6 +135,8 @@ def init_accounting_schema(conn: sqlite3.Connection) -> None:
     # Migrations idempotentes : colonnes ajoutées après la baseline initiale.
     _add_column_if_missing(conn, "accounting_entries", "bexio_id", "TEXT")
     _add_column_if_missing(conn, "accounting_entries", "bexio_pushed_at", "TEXT")
+    # Sprint 1 §3.8 — WinBIZ export idempotence
+    _add_column_if_missing(conn, "accounting_entries", "winbiz_exported_at", "TEXT")
     # Sprint 1 §3.6 — audit trail immutable (auto-init pour que les hooks
     # dans workflow_states/entry_proposer/bexio_push trouvent toujours la table).
     from . import audit_log

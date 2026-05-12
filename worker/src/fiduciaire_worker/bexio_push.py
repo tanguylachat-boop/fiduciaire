@@ -47,6 +47,7 @@ import httpx
 
 from . import accounting_schema as acct_schema
 from . import audit_log as _audit
+from . import encryption as _enc
 
 _log = logging.getLogger("fiduciaire.bexio_push")
 
@@ -167,18 +168,26 @@ def _build_payload(
     row: sqlite3.Row,
     account_map: dict[str, int],
     tax_map: dict[str, int] | None,
+    cabinet_id: str,
 ) -> dict[str, Any] | None:
-    """Construit le body POST. Retourne None si account non mappé."""
+    """Construit le body POST. Retourne None si account non mappé.
+
+    Sprint 1 §3.4-bis : decrypt `description` si chiffrée avant envoi Bexio.
+    """
     debit_id = account_map.get(str(row["debit_account"]))
     credit_id = account_map.get(str(row["credit_account"]))
     if debit_id is None or credit_id is None:
         return None
 
+    description_plain = _enc.decrypt_column_value(
+        row["description"], cabinet_id,
+    ) or ""
+
     entry_line: dict[str, Any] = {
         "debit_account_id": debit_id,
         "credit_account_id": credit_id,
         "amount": float(row["amount_chf"]),
-        "description": (row["description"] or "")[:128],
+        "description": description_plain[:128],
     }
     if tax_map is not None:
         tax_id = tax_map.get(str(row["vat_code"]))
@@ -311,7 +320,7 @@ def push_validated_entries(
                 ))
                 continue
 
-            payload = _build_payload(row, account_map, tax_map)
+            payload = _build_payload(row, account_map, tax_map, cabinet_id)
             if payload is None:
                 summary.account_not_mapped += 1
                 summary.results.append(BexioPushResult(

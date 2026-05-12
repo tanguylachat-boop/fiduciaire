@@ -1,4 +1,11 @@
-"""Fixtures pytest : tmp config + génération PDFs synthétiques."""
+"""Fixtures pytest : tmp config + génération PDFs synthétiques.
+
+NB Session 6 (§3.4-bis) : `FIDUCIAIRE_ENCRYPTION_DISABLED=true` est
+activé par défaut pour TOUS les tests via `_disable_encryption_by_default`.
+Les tests qui veulent tester le chiffrement (test_encryption,
+test_column_encryption, test_backup) doivent `monkeypatch.delenv` ce flag
+explicitement dans leur propre autouse fixture.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +24,17 @@ from reportlab.pdfgen import canvas
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "worker" / "src"))
+
+
+# --- Encryption disabled par défaut (non-régression) -----------------------
+# Les tests existants (entry_proposer, vendor_history, imap_fetch, dashboard,
+# multi_mandant_e2e) ne doivent pas voir de différence quand on intègre
+# encrypt/decrypt automatique dans les modules métier.
+
+@pytest.fixture(autouse=True)
+def _disable_encryption_by_default(monkeypatch):
+    monkeypatch.setenv("FIDUCIAIRE_ENCRYPTION_DISABLED", "true")
+    yield
 
 
 # --- Helpers génération PDF ----------------------------------------------------

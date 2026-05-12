@@ -21,6 +21,7 @@ from typing import Any, Callable
 import httpx
 
 from . import accounting_schema, audit_log, plan_comptable_mapper, vat_code_detector
+from . import encryption as _enc
 from . import vendor_account_history as vah
 
 VENDOR_HISTORY_CONFIDENCE_THRESHOLD = 0.8
@@ -271,6 +272,10 @@ def _persist(
 ) -> ProposedEntry:
     if not persist:
         return entry
+    # Sprint 1 §3.4-bis — chiffre les colonnes texte sensibles avant INSERT.
+    # L'objet entry retourné reste en clair (les attrs ne sont pas réécrits).
+    description_db = _enc.encrypt_column_value(entry.description, entry.client_id)
+    reasoning_db = _enc.encrypt_column_value(entry.reasoning, entry.client_id)
     cur = conn.execute(
         "INSERT INTO accounting_entries "
         "(client_id, source_document_id, date, debit_account, credit_account, "
@@ -286,10 +291,10 @@ def _persist(
             entry.amount_chf,
             entry.vat_code,
             entry.vat_amount,
-            entry.description,
+            description_db,
             entry.confidence_account,
             entry.confidence_vat,
-            entry.reasoning,
+            reasoning_db,
             json.dumps(entry.sources, ensure_ascii=False),
             entry.state,
         ),

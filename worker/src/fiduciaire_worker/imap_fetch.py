@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import db
+from . import encryption as _enc
 from .config import Config
 from .email_parser import (
     ParsedAttachment,
@@ -185,6 +186,9 @@ def _insert_email_message(
     uidvalidity: int,
     parsed: ParsedEmail,
 ) -> int:
+    # Sprint 1 §3.4-bis — chiffrement PII : body_excerpt + from_addr.
+    body_excerpt_db = _enc.encrypt_column_value(parsed.body_excerpt, cabinet_id)
+    from_addr_db = _enc.encrypt_column_value(parsed.from_addr, cabinet_id)
     cur = conn.execute(
         """
         INSERT INTO email_messages
@@ -195,8 +199,8 @@ def _insert_email_message(
         """,
         (
             cabinet_id, folder, uid, uidvalidity, parsed.message_id,
-            parsed.date_received, parsed.from_addr, parsed.to_addr,
-            parsed.subject, parsed.body_excerpt, parsed.encryption_status,
+            parsed.date_received, from_addr_db, parsed.to_addr,
+            parsed.subject, body_excerpt_db, parsed.encryption_status,
             parsed.size_bytes,
         ),
     )

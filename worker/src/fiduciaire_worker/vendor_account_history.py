@@ -14,6 +14,8 @@ import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
+from . import encryption as _enc
+
 
 @dataclass
 class VendorRecommendation:
@@ -97,6 +99,10 @@ def build_history_from_bexio_cache(
             confidence=_confidence(top_count, second_count),
         )
         out[vendor_id] = rec
+        # Sprint 1 §3.4-bis — chiffrement vendor_name (PII fournisseur).
+        vendor_name_db = _enc.encrypt_column_value(
+            vendor_names[vendor_id], client_id,
+        )
         conn.execute(
             "INSERT OR REPLACE INTO vendor_account_history "
             "(client_id, vendor_id, vendor_name, account, vat_code, occurrences, last_seen) "
@@ -104,7 +110,7 @@ def build_history_from_bexio_cache(
             (
                 client_id,
                 vendor_id,
-                vendor_names[vendor_id],
+                vendor_name_db,
                 top_account,
                 top_vat,
                 top_count,
@@ -119,19 +125,26 @@ def lookup(
     client_id: str,
     vendor_name_or_id: str,
 ) -> VendorRecommendation | None:
-    """Recherche par vendor_id exact OU vendor_name (LIKE %x%, case-insensitive)."""
+    """Recherche par vendor_id exact OU vendor_name (LIKE %x%, case-insensitive).
+
+    Sprint 1 §3.4-bis : si vendor_name est chiffré en DB, le fuzzy LIKE
+    sur la colonne ne marche plus (le contenu chiffré est un token Fernet).
+    Fallback : on charge tous les vendors du cabinet, decrypt en mémoire,
+    puis fuzzy match sur le clair. Cost O(N) acceptable car N ≤ quelques
+    centaines par cabinet.
+    """
     if not vendor_name_or_id:
         return None
     needle = vendor_name_or_id.strip()
 
-    # 1. exact match sur vendor_id
+    # 1. exact match sur vendor_id (toujours en clair)
     row = conn.execute(
         "SELECT * FROM vendor_account_history WHERE client_id = ? AND vendor_id = ? "
         "ORDER BY occurrences DESC LIMIT 1",
         (client_id, needle),
     ).fetchone()
     if row is None:
-        # 2. fuzzy sur vendor_name (LIKE)
+        # 2. fuzzy : on tente d'abord SQL LIKE (compat valeurs en clair pré-chiffrement)
         row = conn.execute(
             "SELECT * FROM vendor_account_history "
             "WHERE client_id = ? AND lower(vendor_name) LIKE ? "
@@ -139,10 +152,30 @@ def lookup(
             (client_id, f"%{needle.lower()}%"),
         ).fetchone()
     if row is None:
+        # 3. fuzzy in-memory si les vendors sont chiffrés
+        candidates = conn.execute(
+            "SELECT * FROM vendor_account_history WHERE client_id = ? "
+            "ORDER BY occurrences DESC",
+            (client_id,),
+        ).fetchall()
+        for c in candidates:
+            stored_name = c["vendor_name"]
+            if _enc.is_encrypted_column_value(stored_name):
+                try:
+                    decrypted = _enc.decrypt_column_value(stored_name, client_id)
+                except Exception:
+                    continue
+            else:
+                decrypted = stored_name
+            if decrypted and needle.lower() in decrypted.lower():
+                row = c
+                break
+    if row is None:
         return None
+    vendor_name_plain = _enc.decrypt_column_value(row["vendor_name"], client_id)
     return VendorRecommendation(
         vendor_id=row["vendor_id"],
-        vendor_name=row["vendor_name"],
+        vendor_name=vendor_name_plain,
         recommended_account=row["account"],
         recommended_vat_code=row["vat_code"],
         occurrences=row["occurrences"],

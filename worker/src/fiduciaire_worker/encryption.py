@@ -45,6 +45,11 @@ ARCHIVE_MAGIC = b"FID1"
 ARCHIVE_VERSION = b"\x00\x00\x00\x01"
 HEADER_LENGTH = len(ARCHIVE_MAGIC) + len(ARCHIVE_VERSION)
 
+# Sprint 1 §3.4-bis — chiffrement applicatif des colonnes texte sensibles.
+# Préfixe explicite dans la valeur stockée : permet détection facile +
+# back-compat (valeurs anciennes en clair restent lisibles).
+COLUMN_MARKER = "enc:v1:"
+
 
 class EncryptionError(RuntimeError):
     """Erreur générique de chiffrement / déchiffrement."""
@@ -316,5 +321,175 @@ def rotate_key_and_re_encrypt(
     if not result.errors:
         # Persiste la nouvelle clé en Keychain (remplace l'ancienne)
         _try_keyring_set(cabinet_id, new_key.value)
+
+    return result
+
+
+# --- Column encryption (Sprint 1 §3.4-bis) ----------------------------------
+
+
+def is_encrypted_column_value(value: str | None) -> bool:
+    """True si `value` est un token Fernet préfixé `enc:v1:`."""
+    return isinstance(value, str) and value.startswith(COLUMN_MARKER)
+
+
+def encrypt_column_value(value: str | None, cabinet_id: str) -> str | None:
+    """Chiffre une valeur colonne texte → `enc:v1:<token>`.
+
+    Idempotent : si la valeur est déjà chiffrée OU None OU vide, retourne tel quel.
+    Mode disabled : retourne tel quel.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        # Coerce non-str (ex. int loggué par erreur) → str pour ne pas
+        # casser, mais on ne chiffre pas (caller responsable de typer).
+        value = str(value)
+    if value == "":
+        return value
+    if is_encryption_disabled():
+        return value
+    if is_encrypted_column_value(value):
+        return value
+    key = ensure_master_key(cabinet_id)
+    token = key.fernet.encrypt(value.encode("utf-8")).decode("ascii")
+    return COLUMN_MARKER + token
+
+
+def decrypt_column_value(value: str | None, cabinet_id: str) -> str | None:
+    """Déchiffre `enc:v1:<token>` → texte clair.
+
+    Si `value` n'a pas le préfixe (valeur en clair pré-migration),
+    retourne tel quel (back-compat).
+    Mode disabled : retourne tel quel.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    if not is_encrypted_column_value(value):
+        return value
+    if is_encryption_disabled():
+        # Mode dev : on ne devrait pas voir de valeurs chiffrées,
+        # mais si oui on les retourne quand même tentativement.
+        try:
+            key = get_master_key(cabinet_id)
+        except KeyNotFoundError:
+            return value
+        token = value[len(COLUMN_MARKER):].encode("ascii")
+        try:
+            return key.fernet.decrypt(token).decode("utf-8")
+        except Exception:
+            return value
+    key = get_master_key(cabinet_id)
+    token = value[len(COLUMN_MARKER):].encode("ascii")
+    try:
+        return key.fernet.decrypt(token).decode("utf-8")
+    except Exception as exc:
+        raise EncryptionError(
+            f"decrypt_column_value failed for cabinet={cabinet_id}: "
+            f"{type(exc).__name__}"
+        ) from exc
+
+
+def encrypt_dict_columns(
+    data: dict, fields: list[str], cabinet_id: str,
+) -> dict:
+    """Helper : chiffre les `fields` du dict in-place (return même dict).
+
+    Utile pour les patterns INSERT(**data).
+    """
+    if is_encryption_disabled():
+        return data
+    for f in fields:
+        if f in data:
+            data[f] = encrypt_column_value(data[f], cabinet_id)
+    return data
+
+
+def decrypt_dict_columns(
+    data: dict, fields: list[str], cabinet_id: str,
+) -> dict:
+    """Helper : déchiffre les `fields` du dict in-place."""
+    if is_encryption_disabled():
+        # Si certaines valeurs sont quand même chiffrées (legacy en dev),
+        # on essaye quand même.
+        for f in fields:
+            if f in data and is_encrypted_column_value(data.get(f)):
+                data[f] = decrypt_column_value(data[f], cabinet_id)
+        return data
+    for f in fields:
+        if f in data:
+            data[f] = decrypt_column_value(data[f], cabinet_id)
+    return data
+
+
+# --- Migration helper ------------------------------------------------------
+
+
+@dataclass
+class ColumnMigrationResult:
+    table: str
+    column: str
+    rows_encrypted: int
+    rows_skipped_already_encrypted: int
+    rows_skipped_null_or_empty: int
+
+
+def migrate_column_in_place(
+    conn,  # sqlite3.Connection
+    table: str,
+    cabinet_id_column: str,
+    target_column: str,
+    cabinet_id: str,
+    dry_run: bool = False,
+) -> ColumnMigrationResult:
+    """Scanne `table`, chiffre toutes les valeurs `target_column` non préfixées.
+
+    Filtre par `cabinet_id_column = cabinet_id` (multi-mandant strict).
+    Idempotent : valeurs déjà chiffrées (enc:v1:) sont skippées.
+
+    Args:
+        conn: sqlite3.Connection (PK-aware).
+        table: nom table.
+        cabinet_id_column: nom de la colonne cabinet_id (ex. 'client_id').
+        target_column: colonne texte à chiffrer.
+        cabinet_id: filtre cabinet.
+        dry_run: si True, ne modifie pas la DB, retourne juste les compteurs.
+
+    Returns:
+        ColumnMigrationResult.
+    """
+    result = ColumnMigrationResult(
+        table=table, column=target_column,
+        rows_encrypted=0, rows_skipped_already_encrypted=0,
+        rows_skipped_null_or_empty=0,
+    )
+
+    # Alias explicites pour éviter le quirk sqlite3.Row sur "rowid".
+    rows = conn.execute(
+        f"SELECT rowid AS _rid, {target_column} AS _val "
+        f"FROM {table} WHERE {cabinet_id_column} = ?",
+        (cabinet_id,),
+    ).fetchall()
+
+    for row in rows:
+        rowid = row[0]
+        val = row[1]
+        if val is None or val == "":
+            result.rows_skipped_null_or_empty += 1
+            continue
+        if is_encrypted_column_value(val):
+            result.rows_skipped_already_encrypted += 1
+            continue
+        if dry_run:
+            result.rows_encrypted += 1
+            continue
+        encrypted = encrypt_column_value(val, cabinet_id)
+        conn.execute(
+            f"UPDATE {table} SET {target_column} = ? WHERE rowid = ?",
+            (encrypted, rowid),
+        )
+        result.rows_encrypted += 1
 
     return result
