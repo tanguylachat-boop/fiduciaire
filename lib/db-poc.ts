@@ -6,6 +6,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { decryptColumnValueSafe } from "./encryption-ts";
 
 // Résolution path robuste : env var override → cwd → resolve relatif au fichier.
 // Next 16 + turbopack peut placer cwd ailleurs si plusieurs lockfiles existent.
@@ -352,7 +353,7 @@ export function listAccountingEntries(filters: EntryFilters): EntryRow[] {
       params.push(filters.amountMax);
     }
     params.push(limit, offset);
-    return db
+    const rows = db
       .prepare(
         `SELECT e.*,
                 d.original_filename AS doc_filename,
@@ -365,6 +366,14 @@ export function listAccountingEntries(filters: EntryFilters): EntryRow[] {
          LIMIT ? OFFSET ?`,
       )
       .all(...params) as EntryRow[];
+    // Sprint 2 §3.10 Phase 2 (Session 9) — decrypt automatique
+    return rows.map((r) => ({
+      ...r,
+      description: decryptColumnValueSafe(r.description, filters.clientId),
+      reasoning: r.reasoning
+        ? decryptColumnValueSafe(r.reasoning, filters.clientId)
+        : r.reasoning,
+    }));
   });
 }
 
@@ -403,7 +412,15 @@ export function getAccountingEntry(
          WHERE e.id = ? AND e.client_id = ?`,
       )
       .get(id, clientId) as EntryRow | undefined;
-    return row ?? null;
+    if (!row) return null;
+    // Sprint 2 §3.10 Phase 2 (Session 9) — decrypt automatique
+    return {
+      ...row,
+      description: decryptColumnValueSafe(row.description, clientId),
+      reasoning: row.reasoning
+        ? decryptColumnValueSafe(row.reasoning, clientId)
+        : row.reasoning,
+    };
   });
 }
 

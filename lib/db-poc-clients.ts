@@ -11,6 +11,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { decryptColumnValueSafe } from "./encryption-ts";
 
 function resolveDbPath(): string {
   const env = process.env.FIDUCIAIRE_DB_PATH;
@@ -51,21 +52,20 @@ function tableExists(db: Database.Database, name: string): boolean {
   }
 }
 
-const ENC_MARKER = "enc:v1:";
-
 /**
- * Sprint 2 §3.10 — affichage défensif des valeurs potentiellement chiffrées.
- * En dev/test : valeurs en clair → return as-is.
- * En prod chiffré : return `[chiffré]` (decrypt TS à venir Sprint 2 ultérieur).
+ * Sprint 2 §3.10 Phase 1 (Session 8) — placeholder pour valeurs chiffrées.
+ * Sprint 2 §3.10 Phase 2 (Session 9) — wrappe `decryptColumnValueSafe` :
+ * décrypte automatiquement les colonnes chiffrées avant affichage.
+ *
+ * Si la clé n'est pas accessible (mauvais cabinet, env vars absentes),
+ * retourne un fallback string (`[clé absente]` / `[chiffré]`) plutôt
+ * que de crash le Server Component.
  */
 export function displayPossiblyEncrypted(
   value: string | null | undefined,
+  cabinetId: string,
 ): string {
-  if (!value) return "";
-  if (typeof value === "string" && value.startsWith(ENC_MARKER)) {
-    return "[chiffré]";
-  }
-  return value;
+  return decryptColumnValueSafe(value, cabinetId);
 }
 
 // --- Types -------------------------------------------------------------------
@@ -195,7 +195,7 @@ export function listClientRecentEntries(
 ): ClientRecentEntry[] {
   return withDb((db) => {
     if (!tableExists(db, "accounting_entries")) return [];
-    return db
+    const rows = db
       .prepare(
         `SELECT e.id, e.date, e.debit_account, e.credit_account,
                 e.amount_chf, e.vat_code, e.description, e.state,
@@ -208,6 +208,11 @@ export function listClientRecentEntries(
          LIMIT ?`,
       )
       .all(clientId, limit) as ClientRecentEntry[];
+    // Sprint 2 §3.10 Phase 2 (Session 9) — decrypt automatique avant retour
+    return rows.map((r) => ({
+      ...r,
+      description: decryptColumnValueSafe(r.description, clientId),
+    }));
   });
 }
 

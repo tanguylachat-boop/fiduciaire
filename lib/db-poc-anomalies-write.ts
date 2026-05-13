@@ -5,6 +5,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { logAuditEvent } from "./audit-log-ts";
 
 function resolveDbPath(): string {
   const env = process.env.FIDUCIAIRE_DB_PATH;
@@ -70,11 +71,12 @@ function fetchAnomaly(
   return row;
 }
 
-export function markAnomalyResolved(
+function transitionAnomaly(
   id: number,
   clientId: string,
   userId: string | null,
   reason: string | null,
+  toState: "resolved" | "false_positive",
 ): void {
   withWriteDb((db) => {
     const txn = db.transaction(() => {
@@ -83,13 +85,32 @@ export function markAnomalyResolved(
         throw new AnomalyAlreadyClosedError(id, cur.state);
       }
       db.prepare(
-        "UPDATE anomalies SET state='resolved', " +
-          "resolved_at=datetime('now'), resolved_by=?, " +
-          "resolution_reason=? WHERE id = ?",
-      ).run(userId, reason, id);
+        `UPDATE anomalies SET state=?, ` +
+          `resolved_at=datetime('now'), resolved_by=?, ` +
+          `resolution_reason=? WHERE id = ?`,
+      ).run(toState, userId, reason, id);
+      // Sprint 2 §3.10 Phase 2 (Session 9) — audit log hook avec chain hash
+      logAuditEvent(db, {
+        cabinetId: clientId,
+        entityType: "anomaly",
+        entityId: id,
+        action: toState === "resolved" ? "anomaly_resolved" : "anomaly_false_positive",
+        userId,
+        before: { state: cur.state },
+        after: { state: toState, reason: reason },
+      });
     });
     txn();
   });
+}
+
+export function markAnomalyResolved(
+  id: number,
+  clientId: string,
+  userId: string | null,
+  reason: string | null,
+): void {
+  transitionAnomaly(id, clientId, userId, reason, "resolved");
 }
 
 export function markAnomalyFalsePositive(
@@ -98,18 +119,5 @@ export function markAnomalyFalsePositive(
   userId: string | null,
   reason: string | null,
 ): void {
-  withWriteDb((db) => {
-    const txn = db.transaction(() => {
-      const cur = fetchAnomaly(db, id, clientId);
-      if (cur.state !== "open") {
-        throw new AnomalyAlreadyClosedError(id, cur.state);
-      }
-      db.prepare(
-        "UPDATE anomalies SET state='false_positive', " +
-          "resolved_at=datetime('now'), resolved_by=?, " +
-          "resolution_reason=? WHERE id = ?",
-      ).run(userId, reason, id);
-    });
-    txn();
-  });
+  transitionAnomaly(id, clientId, userId, reason, "false_positive");
 }

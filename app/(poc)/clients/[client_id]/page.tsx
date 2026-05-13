@@ -8,7 +8,6 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  displayPossiblyEncrypted,
   getClientBankStats,
   getClientStats,
   listClientOpenAnomalies,
@@ -191,7 +190,7 @@ export default async function ClientPage({
                       {e.doc_filename ?? `doc#${e.source_document_id}`}
                     </td>
                     <td className="px-5 py-3 text-xs">
-                      {displayPossiblyEncrypted(e.description)}
+                      {e.description}
                     </td>
                     <td className="px-5 py-3 text-right font-mono tabular-nums">
                       {fmtCHF.format(e.amount_chf)}
