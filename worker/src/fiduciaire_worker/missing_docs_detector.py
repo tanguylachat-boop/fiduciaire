@@ -50,10 +50,13 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_severity
   ON anomalies (severity);
 """
 
-# Types d'anomalies supportés Sprint 1
+# Types d'anomalies supportés Sprint 1 (Session 6 puis §3.7 finition Session 7)
 TYPE_VAT_NO_EVIDENCE = "vat_no_evidence"
 TYPE_POTENTIAL_DUPLICATE = "potential_duplicate"
 TYPE_UNPAID_INVOICE = "unpaid_invoice"
+# Sprint 1 §3.7 finition Session 7 (dépend §3.9 bank_transactions) :
+TYPE_UNPAID_INVOICE_OVERDUE = "unpaid_invoice_overdue"
+TYPE_PAYMENT_WITHOUT_INVOICE = "payment_without_invoice"
 
 SEVERITY_INFO = "info"
 SEVERITY_WARNING = "warning"
@@ -256,10 +259,109 @@ def _rule_unpaid_invoice(
 # --- Scanner principal -------------------------------------------------------
 
 
+def _rule_unpaid_invoice_overdue(
+    conn: sqlite3.Connection, cabinet_id: str, client_id: str | None,
+    overdue_days: int = 60, today: datetime | None = None,
+) -> int:
+    """Facture > overdue_days sans bank_transactions.matched_accounting_entry_id.
+
+    Plus précis que `unpaid_invoice` (qui regarde juste bexio_id) car
+    utilise le rapprochement bancaire CAMT.053 (§3.9). Une entry est
+    "réellement impayée" si aucune transaction bancaire ne la pointe.
+
+    Tolère absence de table bank_transactions (silent skip).
+    """
+    # Skip silencieux si bank_transactions n'existe pas
+    has_bank = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='bank_transactions'"
+    ).fetchone()
+    if not has_bank:
+        return 0
+
+    today = today or datetime.now()
+    cutoff = (today - timedelta(days=overdue_days)).strftime("%Y-%m-%d")
+    rows = conn.execute(
+        "SELECT ae.id, ae.date, ae.amount_chf FROM accounting_entries ae "
+        "WHERE ae.client_id = ? "
+        "  AND ae.state = 'validated' "
+        "  AND ae.date < ? "
+        "  AND NOT EXISTS ("
+        "      SELECT 1 FROM bank_transactions bt "
+        "      WHERE bt.matched_accounting_entry_id = ae.id"
+        "  )",
+        (cabinet_id, cutoff),
+    ).fetchall()
+    n = 0
+    for r in rows:
+        new_id = _record_anomaly(
+            conn, cabinet_id, cabinet_id,
+            TYPE_UNPAID_INVOICE_OVERDUE,
+            "accounting_entry", r["id"],
+            severity=SEVERITY_WARNING,
+            details={
+                "date": r["date"], "amount_chf": float(r["amount_chf"]),
+                "overdue_days": overdue_days,
+                "reason": "no bank transaction matched",
+            },
+        )
+        if new_id is not None:
+            n += 1
+    return n
+
+
+def _rule_payment_without_invoice(
+    conn: sqlite3.Connection, cabinet_id: str, client_id: str | None,
+    grace_days: int = 7, today: datetime | None = None,
+) -> int:
+    """Paiement bancaire CRDT importé > 7j mais sans facture matchée.
+
+    Signal pour le cabinet : "tu as reçu un virement, peux-tu identifier
+    la facture correspondante ?" (peut être facture cabinet pas encore
+    saisie, ou cas inattendu).
+    """
+    has_bank = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='bank_transactions'"
+    ).fetchone()
+    if not has_bank:
+        return 0
+
+    today = today or datetime.now()
+    cutoff = (today - timedelta(days=grace_days)).strftime("%Y-%m-%d")
+    rows = conn.execute(
+        "SELECT id, amount_chf, value_date, description FROM bank_transactions "
+        "WHERE cabinet_id = ? "
+        "  AND credit_debit = 'CRDT' "
+        "  AND matched_document_id IS NULL "
+        "  AND substr(imported_at, 1, 10) < ?",
+        (cabinet_id, cutoff),
+    ).fetchall()
+    n = 0
+    for r in rows:
+        new_id = _record_anomaly(
+            conn, cabinet_id, cabinet_id,
+            TYPE_PAYMENT_WITHOUT_INVOICE,
+            "bank_transaction", r["id"],
+            severity=SEVERITY_WARNING,
+            details={
+                "amount_chf": float(r["amount_chf"]),
+                "value_date": r["value_date"],
+                "description": (r["description"] or "")[:200],
+                "grace_days": grace_days,
+            },
+        )
+        if new_id is not None:
+            n += 1
+    return n
+
+
 _RULES = {
     TYPE_VAT_NO_EVIDENCE: _rule_vat_no_evidence,
     TYPE_POTENTIAL_DUPLICATE: _rule_potential_duplicate,
     TYPE_UNPAID_INVOICE: _rule_unpaid_invoice,
+    TYPE_UNPAID_INVOICE_OVERDUE: _rule_unpaid_invoice_overdue,
+    TYPE_PAYMENT_WITHOUT_INVOICE: _rule_payment_without_invoice,
 }
 
 

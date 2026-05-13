@@ -225,3 +225,120 @@ def test_scan_report_shape(tmp_path: Path) -> None:
     assert report.cabinet_id == "cab-a"
     assert TYPE_VAT_NO_EVIDENCE in report.rules_run
     assert report.duration_s >= 0
+
+
+# --- Sprint 1 §3.7 finition Session 7 (5 nouveaux tests) ---------------------
+
+
+def _setup_with_bank(tmp_path: Path):
+    from fiduciaire_worker.bank_camt import init_bank_schema
+    conn = db.connect(tmp_path / "x.sqlite")
+    db.init_schema(conn)
+    accounting_schema.init_accounting_schema(conn)
+    init_anomalies_schema(conn)
+    init_bank_schema(conn)
+    doc_id, _ = db.insert_document(conn, "sha1", "x.pdf", "/arch/x.pdf")
+    return conn, doc_id
+
+
+def _insert_bank_tx(conn, cabinet_id="cab-a", client_id="cab-a",
+                    amount=100.0, value_date="2026-04-15",
+                    credit_debit="CRDT", matched_entry_id=None,
+                    imported_offset_days=0):
+    from datetime import datetime, timedelta
+    imported_at = (datetime.now() - timedelta(days=imported_offset_days)).strftime(
+        "%Y-%m-%d %H:%M:%S")
+    cur = conn.execute(
+        "INSERT INTO bank_transactions "
+        "(cabinet_id, client_id, iban, value_date, amount_chf, currency, "
+        " credit_debit, matched_accounting_entry_id, imported_at) "
+        "VALUES (?, ?, 'CH...', ?, ?, 'CHF', ?, ?, ?)",
+        (cabinet_id, client_id, value_date, amount, credit_debit,
+         matched_entry_id, imported_at),
+    )
+    return int(cur.lastrowid)
+
+
+def test_unpaid_invoice_overdue_detected_no_bank_match(tmp_path: Path) -> None:
+    """Entry > 60j et aucune bank_transaction la matche → anomalie."""
+    from fiduciaire_worker.missing_docs_detector import (
+        TYPE_UNPAID_INVOICE_OVERDUE,
+    )
+    conn, doc_id = _setup_with_bank(tmp_path)
+    old = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    _insert(conn, doc_id, date=old, state="validated")
+
+    report = scan_anomalies(
+        cabinet_id="cab-a", conn=conn, rules=[TYPE_UNPAID_INVOICE_OVERDUE],
+    )
+    assert report.new_anomalies == 1
+
+
+def test_unpaid_invoice_overdue_skipped_when_matched(tmp_path: Path) -> None:
+    """Si bank_transaction matche l'entry → pas d'anomalie."""
+    from fiduciaire_worker.missing_docs_detector import (
+        TYPE_UNPAID_INVOICE_OVERDUE,
+    )
+    conn, doc_id = _setup_with_bank(tmp_path)
+    old = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    entry_id = _insert(conn, doc_id, date=old, state="validated")
+    _insert_bank_tx(conn, matched_entry_id=entry_id)
+
+    report = scan_anomalies(
+        cabinet_id="cab-a", conn=conn, rules=[TYPE_UNPAID_INVOICE_OVERDUE],
+    )
+    assert report.new_anomalies == 0
+
+
+def test_payment_without_invoice_detected_after_grace(tmp_path: Path) -> None:
+    """Bank tx CRDT importée >7j sans match → anomalie."""
+    from fiduciaire_worker.missing_docs_detector import (
+        TYPE_PAYMENT_WITHOUT_INVOICE,
+    )
+    conn, doc_id = _setup_with_bank(tmp_path)
+    _insert_bank_tx(
+        conn, amount=500, credit_debit="CRDT", matched_entry_id=None,
+        imported_offset_days=10,  # > 7j grace
+    )
+    report = scan_anomalies(
+        cabinet_id="cab-a", conn=conn, rules=[TYPE_PAYMENT_WITHOUT_INVOICE],
+    )
+    assert report.new_anomalies == 1
+
+
+def test_payment_without_invoice_skipped_within_grace(tmp_path: Path) -> None:
+    """Bank tx récente (<7j) → pas encore flaggée (grace period)."""
+    from fiduciaire_worker.missing_docs_detector import (
+        TYPE_PAYMENT_WITHOUT_INVOICE,
+    )
+    conn, doc_id = _setup_with_bank(tmp_path)
+    _insert_bank_tx(
+        conn, amount=500, credit_debit="CRDT", matched_entry_id=None,
+        imported_offset_days=3,
+    )
+    report = scan_anomalies(
+        cabinet_id="cab-a", conn=conn, rules=[TYPE_PAYMENT_WITHOUT_INVOICE],
+    )
+    assert report.new_anomalies == 0
+
+
+def test_finition_rules_silent_skip_when_no_bank_table(tmp_path: Path) -> None:
+    """Si bank_transactions n'existe pas, les 2 nouvelles règles no-op."""
+    from fiduciaire_worker.missing_docs_detector import (
+        TYPE_UNPAID_INVOICE_OVERDUE, TYPE_PAYMENT_WITHOUT_INVOICE,
+    )
+    # Setup sans bank schema
+    conn = db.connect(tmp_path / "no_bank.sqlite")
+    db.init_schema(conn)
+    accounting_schema.init_accounting_schema(conn)
+    init_anomalies_schema(conn)
+    doc_id, _ = db.insert_document(conn, "sha-x", "x.pdf", "/arch/x.pdf")
+    old = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    _insert(conn, doc_id, date=old, state="validated")
+
+    report = scan_anomalies(
+        cabinet_id="cab-a", conn=conn,
+        rules=[TYPE_UNPAID_INVOICE_OVERDUE, TYPE_PAYMENT_WITHOUT_INVOICE],
+    )
+    # No-op silent : 0 anomalies (pas de bank_transactions à scanner)
+    assert report.new_anomalies == 0
