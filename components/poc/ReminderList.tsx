@@ -5,7 +5,7 @@ import {
   approveAndSendReminder,
   skipReminderAction,
   editReminderDraftAction,
-  batchApproveReminders,
+  batchSendReminders,
 } from "@/app/(poc)/reminders/actions";
 import { Badge } from "@/components/ui/Badge";
 import type { ReminderRow } from "@/lib/db-poc-reminders";
@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Échouée",
 };
 
-function ReminderRow({
+function ReminderCard({
   reminder,
   cabinetId,
   selected,
@@ -63,13 +63,17 @@ function ReminderRow({
 
   const isActionable = ["pending", "approved"].includes(reminder.status);
 
-  function handleApprove() {
+  function handleSend() {
     const fd = new FormData();
     fd.set("id", String(reminder.id));
     fd.set("cabinet_id", cabinetId);
     startTransition(async () => {
       const res = await approveAndSendReminder(fd);
-      setFeedback(res.ok ? "✓ Approuvée" : `✗ ${res.error}`);
+      if (res.ok) {
+        setFeedback(res.dry_run ? "✓ Envoyé (dry-run)" : "✓ Envoyé");
+      } else {
+        setFeedback(`✗ ${res.error}`);
+      }
     });
   }
 
@@ -93,7 +97,7 @@ function ReminderRow({
       const res = await editReminderDraftAction(fd);
       if (res.ok) {
         setEditing(false);
-        setFeedback("✓ Sauvegardé et approuvé");
+        setFeedback("✓ Sauvegardé — cliquez Envoyer pour expédier");
       } else {
         setFeedback(`✗ ${res.error}`);
       }
@@ -134,12 +138,12 @@ function ReminderRow({
             </span>
           </div>
           <p className="mt-1.5 font-medium text-sm truncate">{reminder.subject}</p>
-          {reminder.contact_email && (
+          {reminder.contact_email ? (
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
               → {reminder.contact_name || reminder.contact_email}{" "}
               <span className="opacity-60">({reminder.contact_email})</span>
             </p>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
@@ -148,14 +152,14 @@ function ReminderRow({
           >
             {expanded ? "Réduire" : "Voir"}
           </button>
-          {isActionable && (
+          {isActionable ? (
             <>
               <button
-                onClick={handleApprove}
+                onClick={handleSend}
                 disabled={isPending}
                 className="text-xs px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
               >
-                Approuver
+                {isPending ? "Envoi…" : "Envoyer"}
               </button>
               <button
                 onClick={handleSkip}
@@ -165,12 +169,20 @@ function ReminderRow({
                 Ignorer
               </button>
             </>
-          )}
+          ) : null}
+          {reminder.status === "failed" && reminder.error_message ? (
+            <span
+              className="text-xs text-red-400 max-w-[160px] truncate"
+              title={reminder.error_message}
+            >
+              Erreur SMTP
+            </span>
+          ) : null}
         </div>
       </div>
 
       {/* Expanded body */}
-      {expanded && (
+      {expanded ? (
         <div className="px-4 pb-4 border-t border-[var(--color-border)] pt-3 space-y-3">
           {editing ? (
             <div className="space-y-2">
@@ -185,7 +197,7 @@ function ReminderRow({
                   disabled={isPending}
                   className="text-xs px-3 py-1.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
                 >
-                  Sauvegarder & approuver
+                  Sauvegarder
                 </button>
                 <button
                   onClick={() => setEditing(false)}
@@ -200,17 +212,17 @@ function ReminderRow({
               <pre className="text-xs whitespace-pre-wrap font-mono bg-[var(--color-bg)] rounded p-3 border border-[var(--color-border)]">
                 {reminder.body_final || reminder.body_draft}
               </pre>
-              {isActionable && (
+              {isActionable ? (
                 <button
                   onClick={() => setEditing(true)}
                   className="text-xs px-2 py-1 rounded border border-white/10 text-[var(--color-text-muted)] hover:bg-white/5"
                 >
                   Modifier le brouillon
                 </button>
-              )}
+              ) : null}
             </div>
           )}
-          {feedback && (
+          {feedback ? (
             <p
               className={`text-xs ${
                 feedback.startsWith("✗") ? "text-red-400" : "text-emerald-400"
@@ -218,17 +230,19 @@ function ReminderRow({
             >
               {feedback}
             </p>
-          )}
-          {reminder.error_message && (
-            <p className="text-xs text-red-400">Erreur : {reminder.error_message}</p>
-          )}
-          {reminder.sent_at && (
+          ) : null}
+          {reminder.status === "failed" && reminder.error_message ? (
+            <p className="text-xs text-red-400 font-mono break-all">
+              Erreur : {reminder.error_message}
+            </p>
+          ) : null}
+          {reminder.sent_at ? (
             <p className="text-xs text-[var(--color-text-muted)]">
               Envoyée le {reminder.sent_at}
             </p>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -264,18 +278,21 @@ export function ReminderList({
     setSelected(new Set());
   }
 
-  function handleBatchApprove() {
+  function handleBatchSend() {
     const ids = [...selected].join(",");
     const fd = new FormData();
     fd.set("cabinet_id", cabinetId);
     fd.set("ids", ids);
     startTransition(async () => {
-      const res = await batchApproveReminders(fd);
-      setBatchFeedback(
-        res.ok
-          ? `✓ ${res.count} relance(s) approuvée(s)`
-          : `✓ ${res.count} approuvées — ✗ ${res.error}`
-      );
+      const res = await batchSendReminders(fd);
+      if (res.ok) {
+        setBatchFeedback(`✓ ${res.sent}/${res.total} envoyé(s)`);
+      } else {
+        const errDetail = res.errors.map((e) => `#${e.id}: ${e.error}`).join(" | ");
+        setBatchFeedback(
+          `✓ ${res.sent} envoyé(s) — ✗ ${res.failed} échec(s) — ${errDetail}`
+        );
+      }
       clearSelection();
     });
   }
@@ -283,24 +300,24 @@ export function ReminderList({
   return (
     <div className="space-y-3">
       {/* Batch toolbar */}
-      {actionable.length > 0 && (
-        <div className="flex items-center gap-3 text-sm">
+      {actionable.length > 0 ? (
+        <div className="flex items-center gap-3 text-sm flex-wrap">
           <button
             onClick={selectAll}
             className="text-[var(--color-text-muted)] hover:text-white"
           >
             Tout sélectionner ({actionable.length})
           </button>
-          {selected.size > 0 && (
+          {selected.size > 0 ? (
             <>
               <span className="text-[var(--color-text-muted)]">|</span>
               <span className="text-white">{selected.size} sélectionné(s)</span>
               <button
-                onClick={handleBatchApprove}
+                onClick={handleBatchSend}
                 disabled={isPending}
                 className="px-3 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs hover:bg-emerald-500/30 disabled:opacity-50"
               >
-                Approuver la sélection
+                {isPending ? "Envoi en cours…" : "Envoyer la sélection"}
               </button>
               <button
                 onClick={clearSelection}
@@ -309,22 +326,24 @@ export function ReminderList({
                 Annuler
               </button>
             </>
-          )}
-          {batchFeedback && (
+          ) : null}
+          {batchFeedback ? (
             <span
               className={`text-xs ${
-                batchFeedback.startsWith("✗") ? "text-red-400" : "text-emerald-400"
+                batchFeedback.startsWith("✗") || batchFeedback.includes("✗")
+                  ? "text-amber-400"
+                  : "text-emerald-400"
               }`}
             >
               {batchFeedback}
             </span>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
 
       {/* Reminder rows */}
       {reminders.map((r) => (
-        <ReminderRow
+        <ReminderCard
           key={r.id}
           reminder={r}
           cabinetId={cabinetId}
