@@ -37,7 +37,18 @@ def _normalize_ratio(chars: int, pixels: int) -> float:
 
 
 def ocr_tesseract(path: Path, langs: list[str], dpi: int) -> tuple[list[str], list[tuple[int, int]]]:
-    """OCR page-par-page. Retourne (textes, dimensions[w,h])."""
+    """OCR page-par-page. Retourne (textes, dimensions[w,h]).
+
+    Workaround Pillow 12.x / pytesseract 0.3.13 : l'appel direct
+    `pytesseract.image_to_string(pil_image)` casse car Pillow 12 a modifié la
+    sérialisation interne du buffer PPM passé à tesseract via stdin. On
+    contourne en écrivant l'image en PNG temporaire puis en passant le chemin
+    à pytesseract (qui accepte les deux signatures).
+    Cf. bug investigation 2026-05-16.
+    """
+    import os
+    import tempfile
+
     import pytesseract
     from PIL import Image
 
@@ -52,7 +63,17 @@ def ocr_tesseract(path: Path, langs: list[str], dpi: int) -> tuple[list[str], li
     texts: list[str] = []
     dims: list[tuple[int, int]] = []
     for p in pages:
-        texts.append(pytesseract.image_to_string(p, lang=lang))
+        # Workaround : passer par PNG temp au lieu de l'objet PIL direct.
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            p.save(tmp_path, "PNG")
+            texts.append(pytesseract.image_to_string(tmp_path, lang=lang))
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         dims.append(p.size)
     return texts, dims
 
